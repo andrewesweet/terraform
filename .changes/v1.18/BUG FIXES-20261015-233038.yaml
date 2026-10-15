@@ -1,0 +1,5 @@
+kind: BUG FIXES
+body: Fixed a `terraform test` crash (`value has marks` panic) when a failed assertion references a value carrying a deprecation mark. Only deprecation marks are removed before rendering the value for the diagnostic.
+time: 2026-10-15T23:30:38.375452152+01:00
+custom:
+    Issue: "TBD"

@@ -448,6 +448,11 @@ func TestTest_Runs(t *testing.T) {
 				"This output is deprecated!",
 			},
 		},
+		"deprecated_output_failed_assertion": {
+			expectedOut: []string{"0 passed, 1 failed."},
+			expectedErr: []string{"Test assertion failed", "unexpected name"},
+			code:        1,
+		},
 		"no-tests": {
 			code: 0,
 		},

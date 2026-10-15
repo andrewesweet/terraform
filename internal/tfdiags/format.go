@@ -147,6 +147,10 @@ func TraversalStr(traversal hcl.Traversal) string {
 func FormatValueStr(val cty.Value) (string, error) {
 	var buf bytes.Buffer
 
+	// Deprecation marks don't impact formatting, so remove them to unblock
+	// transforming and marshalling the value below.
+	val, _ = marks.GetDeprecationMarksDeep(val)
+
 	val, err := cty.Transform(val, func(path cty.Path, val cty.Value) (cty.Value, error) {
 		// If a value is sensitive or ephemeral or unknown, we redact it, otherwise
 		// we return the value as is.

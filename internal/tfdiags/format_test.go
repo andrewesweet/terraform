@@ -108,3 +108,45 @@ func TestCompactValueStr(t *testing.T) {
 		})
 	}
 }
+
+func TestFormatValueStr(t *testing.T) {
+	tests := []struct {
+		Name string
+		Val  cty.Value
+		Want string
+	}{
+		{
+			Name: "top-level deprecation mark",
+			Val:  cty.StringVal("hello").Mark(marks.NewDeprecation("do not use", "test")),
+			Want: `"hello"`,
+		},
+		{
+			Name: "nested deprecation mark",
+			Val: cty.ObjectVal(map[string]cty.Value{
+				"a": cty.StringVal("x").Mark(marks.NewDeprecation("do not use", "test")),
+				"b": cty.StringVal("y"),
+			}),
+			Want: "{\n  \"a\": \"x\",\n  \"b\": \"y\"\n}",
+		},
+		{
+			Name: "deprecated value with sensitive attribute",
+			Val: cty.ObjectVal(map[string]cty.Value{
+				"legacy": cty.StringVal("a").Mark(marks.NewDeprecation("do not use", "test")),
+				"secret": cty.StringVal("password").Mark(marks.Sensitive),
+			}),
+			Want: "{\n  \"legacy\": \"a\",\n  \"secret\": \"(sensitive value)\"\n}",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.Name, func(t *testing.T) {
+			got, err := FormatValueStr(test.Val)
+			if err != nil {
+				t.Fatalf("unexpected error: %s", err)
+			}
+			if got != test.Want {
+				t.Errorf("wrong result\nvalue: %#v\ngot:   %s\nwant:  %s", test.Val, got, test.Want)
+			}
+		})
+	}
+}

@@ -1,0 +1,7 @@
+kind: ENHANCEMENTS
+body: Building the function table for a new evaluation scope is now much cheaper, so plans of configurations with many blocks spend less time setting up expression evaluation
+time: 2026-10-24T22:57:46.078263523+01:00
+custom:
+    # PLACEHOLDER: replace with the number of the pull request that makes this
+    # change before submitting.
+    Issue: "PULL_REQUEST_NUMBER"

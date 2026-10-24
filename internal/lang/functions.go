@@ -5,6 +5,7 @@ package lang
 
 import (
 	"fmt"
+	"sync"
 
 	"github.com/hashicorp/hcl/v2/ext/tryfunc"
 	ctyyaml "github.com/zclconf/go-cty-yaml"
@@ -49,6 +50,16 @@ var templateFunctions = collections.NewSetCmp[string](
 	"templatestring",
 )
 
+// cachedCoreFunctionsByBaseDir caches the parts of the function table that
+// depend only on a Scope's base directory. Terraform creates a Scope for each
+// block it evaluates, so without this cache the same table is derived over and
+// over from the same inputs. Every scope core creates uses a base directory of
+// ".", so this cache holds essentially one entry per process.
+var (
+	cachedCoreFunctionsMu        sync.Mutex
+	cachedCoreFunctionsByBaseDir = make(map[string]map[string]function.Function)
+)
+
 // Functions returns the set of functions that should be used to when evaluating
 // expressions in the receiving scope.
 func (s *Scope) Functions() map[string]function.Function {
@@ -65,22 +76,32 @@ func (s *Scope) Functions() map[string]function.Function {
 
 	s.funcsLock.Lock()
 	if s.funcs == nil {
-		coreFuncs := baseFunctions(s.BaseDir)
+		// Most of the table depends only on the base directory, so we copy
+		// the table shared by all scopes using that base directory and then
+		// replace the functions that depend on the rest of this scope's
+		// configuration. Each scope keeps its own table because callers are
+		// allowed to modify it, and because the template-rendering functions
+		// indirectly refer to it.
+		coreFuncs := cachedCoreFunctions(s.BaseDir)
+		s.funcs = make(map[string]function.Function, len(coreFuncs))
+		for name, fn := range coreFuncs {
+			s.funcs[name] = fn
+		}
 
 		// Modify the functions which behave slightly differently in core.
 		// Filesystem functions will check for consistent results, and the
 		// template functions need to be updated to close over the correct
 		// versions of the filesystem functions.
-		coreFuncs["file"] = funcs.MakeFileFunc(s.BaseDir, false, immutableResults("file", s.FunctionResults))
-		coreFuncs["fileexists"] = funcs.MakeFileExistsFunc(s.BaseDir, immutableResults("fileexists", s.FunctionResults))
-		coreFuncs["fileset"] = funcs.MakeFileSetFunc(s.BaseDir, immutableResults("fileset", s.FunctionResults))
-		coreFuncs["filebase64"] = funcs.MakeFileFunc(s.BaseDir, true, immutableResults("filebase64", s.FunctionResults))
-		coreFuncs["filebase64sha256"] = funcs.MakeFileBase64Sha256Func(s.BaseDir, immutableResults("filebase64sha256", s.FunctionResults))
-		coreFuncs["filebase64sha512"] = funcs.MakeFileBase64Sha512Func(s.BaseDir, immutableResults("filebase64sha512", s.FunctionResults))
-		coreFuncs["filemd5"] = funcs.MakeFileMd5Func(s.BaseDir, immutableResults("filemd5", s.FunctionResults))
-		coreFuncs["filesha1"] = funcs.MakeFileSha1Func(s.BaseDir, immutableResults("filesha1", s.FunctionResults))
-		coreFuncs["filesha256"] = funcs.MakeFileSha256Func(s.BaseDir, immutableResults("filesha256", s.FunctionResults))
-		coreFuncs["filesha512"] = funcs.MakeFileSha512Func(s.BaseDir, immutableResults("filesha512", s.FunctionResults))
+		s.setCoreFunction("file", funcs.MakeFileFunc(s.BaseDir, false, immutableResults("file", s.FunctionResults)))
+		s.setCoreFunction("fileexists", funcs.MakeFileExistsFunc(s.BaseDir, immutableResults("fileexists", s.FunctionResults)))
+		s.setCoreFunction("fileset", funcs.MakeFileSetFunc(s.BaseDir, immutableResults("fileset", s.FunctionResults)))
+		s.setCoreFunction("filebase64", funcs.MakeFileFunc(s.BaseDir, true, immutableResults("filebase64", s.FunctionResults)))
+		s.setCoreFunction("filebase64sha256", funcs.MakeFileBase64Sha256Func(s.BaseDir, immutableResults("filebase64sha256", s.FunctionResults)))
+		s.setCoreFunction("filebase64sha512", funcs.MakeFileBase64Sha512Func(s.BaseDir, immutableResults("filebase64sha512", s.FunctionResults)))
+		s.setCoreFunction("filemd5", funcs.MakeFileMd5Func(s.BaseDir, immutableResults("filemd5", s.FunctionResults)))
+		s.setCoreFunction("filesha1", funcs.MakeFileSha1Func(s.BaseDir, immutableResults("filesha1", s.FunctionResults)))
+		s.setCoreFunction("filesha256", funcs.MakeFileSha256Func(s.BaseDir, immutableResults("filesha256", s.FunctionResults)))
+		s.setCoreFunction("filesha512", funcs.MakeFileSha512Func(s.BaseDir, immutableResults("filesha512", s.FunctionResults)))
 
 		// Our two template-rendering functions want to be able to call
 		// all of the other functions themselves, but we pass them indirectly
@@ -92,36 +113,26 @@ func (s *Scope) Functions() map[string]function.Function {
 			// overwriting the relevant entries.
 			return s.funcs, filesystemFunctions, templateFunctions
 		}
-		coreFuncs["templatefile"] = funcs.MakeTemplateFileFunc(s.BaseDir, funcsFunc, immutableResults("templatefile", s.FunctionResults))
-		coreFuncs["templatestring"] = funcs.MakeTemplateStringFunc(funcsFunc)
+		s.setCoreFunction("templatefile", funcs.MakeTemplateFileFunc(s.BaseDir, funcsFunc, immutableResults("templatefile", s.FunctionResults)))
+		s.setCoreFunction("templatestring", funcs.MakeTemplateStringFunc(funcsFunc))
 
 		if s.ConsoleMode {
 			// The type function is only available in terraform console.
-			coreFuncs["type"] = funcs.TypeFunc
+			s.setCoreFunction("type", funcs.TypeFunc)
 		}
 
 		if !s.ConsoleMode {
 			// The plantimestamp function doesn't make sense in the terraform
 			// console.
-			coreFuncs["plantimestamp"] = funcs.MakeStaticTimestampFunc(s.PlanTimestamp)
+			s.setCoreFunction("plantimestamp", funcs.MakeStaticTimestampFunc(s.PlanTimestamp))
 		}
 
 		if s.PureOnly {
 			// Force our few impure functions to return unknown so that we
 			// can defer evaluating them until a later pass.
 			for _, name := range impureFunctions {
-				coreFuncs[name] = function.Unpredictable(coreFuncs[name])
+				s.setCoreFunction(name, function.Unpredictable(s.funcs[name]))
 			}
-		}
-
-		// All of the built-in functions are also available under the "core::"
-		// namespace, to distinguish from the "provider::" and "module::"
-		// namespaces that can serve as external extension points.
-		s.funcs = make(map[string]function.Function)
-		for name, fn := range coreFuncs {
-			fn = funcs.WithDescription(name, fn)
-			s.funcs[name] = fn
-			s.funcs["core::"+name] = fn
 		}
 
 		// We'll also bring in any external functions that the caller provided
@@ -138,6 +149,50 @@ func (s *Scope) Functions() map[string]function.Function {
 	s.funcsLock.Unlock()
 
 	return s.funcs
+}
+
+// setCoreFunction records the given function in the receiving scope's table
+// under both its bare name and its "core::" namespaced name, wrapping it in
+// the description associated with the given name.
+func (s *Scope) setCoreFunction(name string, fn function.Function) {
+	fn = funcs.WithDescription(name, fn)
+	s.funcs[name] = fn
+	s.funcs["core::"+name] = fn
+}
+
+// cachedCoreFunctions returns the built-in functions that depend only on the
+// given base directory, including both their bare names and their "core::"
+// namespaced names, each wrapped in its description.
+//
+// The result is shared by every caller with the same base directory, so it
+// must not be modified. Callers that need to change entries must copy it
+// first, as Scope.Functions does.
+func cachedCoreFunctions(baseDir string) map[string]function.Function {
+	cachedCoreFunctionsMu.Lock()
+	defer cachedCoreFunctionsMu.Unlock()
+
+	if table, ok := cachedCoreFunctionsByBaseDir[baseDir]; ok {
+		return table
+	}
+
+	// baseFunctions returns the functions that don't depend on any other part
+	// of a scope's configuration. The ones it builds for the base directory
+	// itself are replaced by the caller, so their wrappers and callbacks here
+	// are only placeholders.
+	baseFuncs := baseFunctions(baseDir)
+
+	// All of the built-in functions are also available under the "core::"
+	// namespace, to distinguish from the "provider::" and "module::"
+	// namespaces that can serve as external extension points.
+	table := make(map[string]function.Function, len(baseFuncs)*2)
+	for name, fn := range baseFuncs {
+		fn = funcs.WithDescription(name, fn)
+		table[name] = fn
+		table["core::"+name] = fn
+	}
+
+	cachedCoreFunctionsByBaseDir[baseDir] = table
+	return table
 }
 
 // TestingFunctions returns the set of functions available to the testing

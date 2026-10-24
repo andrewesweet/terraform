@@ -1,0 +1,7 @@
+kind: ENHANCEMENTS
+# PLACEHOLDER: the Issue field below must be replaced with the number of the
+# upstream pull request once one exists (changie expects an int).
+body: 'core: Reduce overhead of Terraform commands that log nothing by skipping the formatting of standard-library log messages when logging is disabled'
+time: 2026-10-24T23:00:00+01:00
+custom:
+    Issue: 0

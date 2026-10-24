@@ -59,7 +59,26 @@ func init() {
 	// set up the default std library logger to use our output
 	log.SetFlags(0)
 	log.SetPrefix("")
-	log.SetOutput(logWriter)
+	log.SetOutput(standardLogWriter(logger, logWriter))
+}
+
+// standardLogWriter returns the writer for the standard library "log" package
+// derived from the global logger.
+//
+// When logging is disabled (the global level is Off, the default when TF_LOG
+// and the related variables are unset) the standard writer would format every
+// message only for the logger to discard it at its level check. Go's log
+// package instead skips all formatting when its output is exactly io.Discard,
+// so we route the standard logger there while logging is off.
+//
+// Messages written through the standard logger never reach the sinks
+// registered on the global logger, so this does not change what crash logs
+// capture; see TestStdLoggerMessagesDoNotReachSinks.
+func standardLogWriter(logger hclog.Logger, stdWriter io.Writer) io.Writer {
+	if logger.GetLevel() == hclog.Off {
+		return io.Discard
+	}
+	return stdWriter
 }
 
 // SetupTempLog adds a new log sink which writes all logs to the given file.

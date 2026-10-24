@@ -288,6 +288,64 @@ func TestGlobalLogLevelCoreFallback(t *testing.T) {
 	}
 }
 
+// When logging is disabled the standard logger must be routed to exactly
+// io.Discard, because Go's log package applies its formatting fast path only
+// when the writer is io.Discard. When logging is enabled the hclog standard
+// writer must be used as before.
+func TestStandardLogWriterSelection(t *testing.T) {
+	t.Setenv("TF_LOG", "")
+	logger, stdWriter := stdWriterFor()
+	if got := standardLogWriter(logger, stdWriter); got != io.Discard {
+		t.Fatalf("expected io.Discard when the global level is off, got %T", got)
+	}
+
+	t.Setenv("TF_LOG", "trace")
+	logger, stdWriter = stdWriterFor()
+	if got := standardLogWriter(logger, stdWriter); got != io.Writer(stdWriter) {
+		t.Fatalf("expected the hclog standard writer when logging is enabled, got %T", got)
+	}
+}
+
+// The test binary runs without TF_LOG set, so the init wiring in this package
+// has routed the process-wide standard library logger. Go's log package only
+// applies its fast path when the writer is exactly io.Discard, so assert
+// identity rather than behaviour.
+func TestProcessStdLoggerDiscardedWhenLoggingDisabled(t *testing.T) {
+	if os.Getenv("TF_LOG") != "" || os.Getenv("TF_LOG_CORE") != "" {
+		t.Skip("requires TF_LOG and TF_LOG_CORE to be unset")
+	}
+	if log.Writer() != io.Discard {
+		t.Fatalf("standard logger output is %T, want io.Discard", log.Writer())
+	}
+}
+
+// BenchmarkStdLogPrintfDisabled times a representative log.Printf call with
+// logging disabled (TF_LOG unset), which is how terraform runs in automation
+// and tests. The benchmark guards its own precondition so that it cannot
+// silently measure the wrong wiring.
+func BenchmarkStdLogPrintfDisabled(b *testing.B) {
+	if HCLogger().GetLevel() != hclog.Off {
+		b.Skip("requires TF_LOG to be unset so that logging is disabled")
+	}
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		log.Printf("[TRACE] LoadSchemas: retrieving schema for provider type %q", "registry.terraform.io/hashicorp/random")
+	}
+}
+
+// BenchmarkStdLogPrintfEnabled times the same call with logging enabled at
+// TRACE level to show that the enabled path is unchanged. Run the test binary
+// with TF_LOG=trace (and stderr redirected) for this benchmark.
+func BenchmarkStdLogPrintfEnabled(b *testing.B) {
+	if HCLogger().GetLevel() != hclog.Trace {
+		b.Skip("requires TF_LOG=trace")
+	}
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		log.Printf("[TRACE] LoadSchemas: retrieving schema for provider type %q", "registry.terraform.io/hashicorp/random")
+	}
+}
+
 // An invalid TF_LOG value must keep logging enabled at TRACE level (the
 // warning is printed to stderr), so it must not take any logging-disabled
 // fast path.

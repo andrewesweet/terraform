@@ -23,7 +23,7 @@ import (
 func TestTest(t *testing.T) {
 
 	streams, done := terminal.StreamsForTesting(t)
-	view := views.NewTest(arguments.ViewHuman, views.NewView(streams))
+	view := views.NewTest(arguments.ViewHuman, views.NewView(streams), false)
 
 	colorize := mockColorize()
 	colorize.Disable = true
@@ -108,7 +108,7 @@ Success! 2 passed, 0 failed.
 func TestTest_Parallelism(t *testing.T) {
 
 	streams, _ := terminal.StreamsForTesting(t)
-	view := views.NewTest(arguments.ViewHuman, views.NewView(streams))
+	view := views.NewTest(arguments.ViewHuman, views.NewView(streams), false)
 
 	colorize := mockColorize()
 	colorize.Disable = true
@@ -183,7 +183,7 @@ func TestTest_Parallelism(t *testing.T) {
 func TestTest_JSON(t *testing.T) {
 
 	streams, done := terminal.StreamsForTesting(t)
-	view := views.NewTest(arguments.ViewHuman, views.NewView(streams))
+	view := views.NewTest(arguments.ViewHuman, views.NewView(streams), false)
 
 	colorize := mockColorize()
 	colorize.Disable = true
@@ -285,7 +285,7 @@ func TestTest_Verbose(t *testing.T) {
 	}
 
 	streams, done := terminal.StreamsForTesting(t)
-	view := views.NewTest(arguments.ViewHuman, views.NewView(streams))
+	view := views.NewTest(arguments.ViewHuman, views.NewView(streams), false)
 
 	colorize := mockColorize()
 	colorize.Disable = true
@@ -438,7 +438,7 @@ Success! 2 passed, 0 failed.
 func TestTest_Cancel(t *testing.T) {
 
 	streams, outputFn := terminal.StreamsForTesting(t)
-	view := views.NewTest(arguments.ViewHuman, views.NewView(streams))
+	view := views.NewTest(arguments.ViewHuman, views.NewView(streams), false)
 
 	colorize := mockColorize()
 	colorize.Disable = true
@@ -559,7 +559,7 @@ Success! 1 passed, 0 failed, 1 skipped.
 func TestTest_DelayedCancel(t *testing.T) {
 
 	streams, outputFn := terminal.StreamsForTesting(t)
-	view := views.NewTest(arguments.ViewHuman, views.NewView(streams))
+	view := views.NewTest(arguments.ViewHuman, views.NewView(streams), false)
 
 	colorize := mockColorize()
 	colorize.Disable = true
@@ -692,7 +692,7 @@ func TestTest_ForceCancel(t *testing.T) {
 	}
 
 	streams, outputFn := terminal.StreamsForTesting(t)
-	view := views.NewTest(arguments.ViewHuman, views.NewView(streams))
+	view := views.NewTest(arguments.ViewHuman, views.NewView(streams), false)
 
 	colorize := mockColorize()
 	colorize.Disable = true
@@ -854,7 +854,7 @@ Failure! 1 passed, 1 failed.
 func TestTest_LongRunningTest(t *testing.T) {
 
 	streams, done := terminal.StreamsForTesting(t)
-	view := views.NewTest(arguments.ViewHuman, views.NewView(streams))
+	view := views.NewTest(arguments.ViewHuman, views.NewView(streams), false)
 
 	colorize := mockColorize()
 	colorize.Disable = true
@@ -942,7 +942,7 @@ Success! 1 passed, 0 failed.
 func TestTest_LongRunningTestJSON(t *testing.T) {
 
 	streams, done := terminal.StreamsForTesting(t)
-	view := views.NewTest(arguments.ViewHuman, views.NewView(streams))
+	view := views.NewTest(arguments.ViewHuman, views.NewView(streams), false)
 
 	colorize := mockColorize()
 	colorize.Disable = true

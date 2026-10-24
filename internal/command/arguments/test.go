@@ -48,6 +48,13 @@ type Test struct {
 	// ViewType.
 	Verbose bool
 
+	// NoProviderSchemas omits the provider_schemas attribute from the
+	// test_plan and test_state messages that the JSON view emits for each run
+	// block under -verbose. This reduces the size of the machine-readable
+	// output for consumers that do not need the provider schemas. It is only
+	// valid alongside the -json option.
+	NoProviderSchemas bool
+
 	// DeferralAllowed enables deferrals during test operations. This matches
 	// the same-named flag in the Operation struct.
 	DeferralAllowed bool
@@ -70,6 +77,7 @@ func ParseTest(args []string) (*Test, tfdiags.Diagnostics) {
 	cmdFlags.BoolVar(&jsonOutput, "json", false, "json")
 	cmdFlags.StringVar(&test.JUnitXMLFile, "junit-xml", "", "junit-xml")
 	cmdFlags.BoolVar(&test.Verbose, "verbose", false, "verbose")
+	cmdFlags.BoolVar(&test.NoProviderSchemas, "no-provider-schemas", false, "no-provider-schemas")
 	cmdFlags.IntVar(&test.OperationParallelism, "parallelism", DefaultParallelism, "parallelism")
 	cmdFlags.IntVar(&test.RunParallelism, "run-parallelism", DefaultParallelism, "run-parallelism")
 	cmdFlags.BoolVar(&test.DeferralAllowed, "allow-deferral", false, "allow-deferral")
@@ -90,6 +98,20 @@ func ParseTest(args []string) (*Test, tfdiags.Diagnostics) {
 			tfdiags.Error,
 			"Incompatible command-line flags",
 			"The -junit-xml option is currently not compatible with remote test execution via the -cloud-run flag. If you are interested in JUnit XML output for remotely-executed tests please open an issue in GitHub."))
+	}
+
+	if test.NoProviderSchemas && !jsonOutput {
+		diags = diags.Append(tfdiags.Sourceless(
+			tfdiags.Error,
+			"Incompatible command-line flags",
+			"The -no-provider-schemas option is only valid with the -json option."))
+	}
+
+	if test.NoProviderSchemas && len(test.CloudRunSource) > 0 {
+		diags = diags.Append(tfdiags.Sourceless(
+			tfdiags.Error,
+			"Incompatible command-line flags",
+			"The -no-provider-schemas option is not currently compatible with remote test execution via the -cloud-run flag."))
 	}
 
 	// Only set the default parallelism if this is not a cloud-run test.

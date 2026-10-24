@@ -397,7 +397,7 @@ func TestTestHuman_Conclusion(t *testing.T) {
 	for name, tc := range tcs {
 		t.Run(name, func(t *testing.T) {
 			streams, done := terminal.StreamsForTesting(t)
-			view := NewTest(arguments.ViewHuman, NewView(streams))
+			view := NewTest(arguments.ViewHuman, NewView(streams), false)
 
 			view.Conclusion(tc.Suite)
 
@@ -459,7 +459,7 @@ func TestTestHuman_File(t *testing.T) {
 	for name, tc := range tcs {
 		t.Run(name, func(t *testing.T) {
 			streams, done := terminal.StreamsForTesting(t)
-			view := NewTest(arguments.ViewHuman, NewView(streams))
+			view := NewTest(arguments.ViewHuman, NewView(streams), false)
 
 			view.File(tc.File, tc.Progress)
 
@@ -744,7 +744,7 @@ resource "test_resource" "creating" {
 			}
 
 			streams, done := terminal.StreamsForTesting(t)
-			view := NewTest(arguments.ViewHuman, NewView(streams))
+			view := NewTest(arguments.ViewHuman, NewView(streams), false)
 
 			view.Run(tc.Run, file, tc.Progress, 0)
 
@@ -998,7 +998,7 @@ main.tftest.hcl, and they need to be cleaned up manually:
 	for name, tc := range tcs {
 		t.Run(name, func(t *testing.T) {
 			streams, done := terminal.StreamsForTesting(t)
-			view := NewTest(arguments.ViewHuman, NewView(streams))
+			view := NewTest(arguments.ViewHuman, NewView(streams), false)
 
 			view.DestroySummary(tc.diags, tc.run, tc.file, tc.state)
 
@@ -1276,7 +1276,7 @@ Terraform was in the process of creating the following resources for
 	for name, tc := range tcs {
 		t.Run(name, func(t *testing.T) {
 			streams, done := terminal.StreamsForTesting(t)
-			view := NewTest(arguments.ViewHuman, NewView(streams))
+			view := NewTest(arguments.ViewHuman, NewView(streams), false)
 
 			file := &moduletest.File{
 				Name: "main.tftest.hcl",
@@ -1366,7 +1366,7 @@ func TestTestJSON_Abstract(t *testing.T) {
 	for name, tc := range tcs {
 		t.Run(name, func(t *testing.T) {
 			streams, done := terminal.StreamsForTesting(t)
-			view := NewTest(arguments.ViewJSON, NewView(streams))
+			view := NewTest(arguments.ViewJSON, NewView(streams), false)
 
 			view.Abstract(tc.suite)
 			testJSONViewOutputEquals(t, done(t).All(), tc.want)
@@ -1873,7 +1873,7 @@ func TestTestJSON_Conclusion(t *testing.T) {
 	for name, tc := range tcs {
 		t.Run(name, func(t *testing.T) {
 			streams, done := terminal.StreamsForTesting(t)
-			view := NewTest(arguments.ViewJSON, NewView(streams))
+			view := NewTest(arguments.ViewJSON, NewView(streams), false)
 
 			view.Conclusion(tc.suite)
 			testJSONViewOutputEquals(t, done(t).All(), tc.want)
@@ -2251,7 +2251,7 @@ func TestTestJSON_DestroySummary(t *testing.T) {
 	for name, tc := range tcs {
 		t.Run(name, func(t *testing.T) {
 			streams, done := terminal.StreamsForTesting(t)
-			view := NewTest(arguments.ViewJSON, NewView(streams))
+			view := NewTest(arguments.ViewJSON, NewView(streams), false)
 
 			view.DestroySummary(tc.diags, tc.run, tc.file, tc.state)
 			testJSONViewOutputEquals(t, done(t).All(), tc.want)
@@ -2399,7 +2399,7 @@ func TestTestJSON_File(t *testing.T) {
 	for name, tc := range tcs {
 		t.Run(name, func(t *testing.T) {
 			streams, done := terminal.StreamsForTesting(t)
-			view := NewTest(arguments.ViewJSON, NewView(streams))
+			view := NewTest(arguments.ViewJSON, NewView(streams), false)
 
 			view.File(tc.file, tc.progress)
 			testJSONViewOutputEquals(t, done(t).All(), tc.want)
@@ -2409,10 +2409,11 @@ func TestTestJSON_File(t *testing.T) {
 
 func TestTestJSON_Run(t *testing.T) {
 	tcs := map[string]struct {
-		run      *moduletest.Run
-		progress moduletest.Progress
-		elapsed  int64
-		want     []map[string]interface{}
+		run               *moduletest.Run
+		progress          moduletest.Progress
+		elapsed           int64
+		noProviderSchemas bool
+		want              []map[string]interface{}
 	}{
 		"starting": {
 			run:      &moduletest.Run{Name: "run_block", Config: &configs.TestRun{}, Status: moduletest.Pass},
@@ -2990,11 +2991,249 @@ func TestTestJSON_Run(t *testing.T) {
 				},
 			},
 		},
+
+		"verbose_plan_no_provider_schemas": {
+			run: &moduletest.Run{
+				Name:   "run_block",
+				Status: moduletest.Pass,
+				Config: &configs.TestRun{
+					Command: configs.PlanTestCommand,
+				},
+				Verbose: &moduletest.Verbose{
+					Plan: &plans.Plan{
+						Changes: &plans.ChangesSrc{
+							Resources: []*plans.ResourceInstanceChangeSrc{
+								{
+									Addr: addrs.AbsResourceInstance{
+										Module: addrs.RootModuleInstance,
+										Resource: addrs.ResourceInstance{
+											Resource: addrs.Resource{
+												Mode: addrs.ManagedResourceMode,
+												Type: "test_resource",
+												Name: "creating",
+											},
+										},
+									},
+									PrevRunAddr: addrs.AbsResourceInstance{
+										Module: addrs.RootModuleInstance,
+										Resource: addrs.ResourceInstance{
+											Resource: addrs.Resource{
+												Mode: addrs.ManagedResourceMode,
+												Type: "test_resource",
+												Name: "creating",
+											},
+										},
+									},
+									ProviderAddr: addrs.AbsProviderConfig{
+										Module: addrs.RootModule,
+										Provider: addrs.Provider{
+											Hostname:  addrs.DefaultProviderRegistryHost,
+											Namespace: "hashicorp",
+											Type:      "test",
+										},
+									},
+									ChangeSrc: plans.ChangeSrc{
+										Action: plans.Create,
+										After: dynamicValue(
+											t,
+											cty.ObjectVal(map[string]cty.Value{
+												"value": cty.StringVal("foobar"),
+											}),
+											cty.Object(map[string]cty.Type{
+												"value": cty.String,
+											})),
+									},
+								},
+							},
+						},
+					},
+					State: states.NewState(), // empty state
+					Config: &configs.Config{
+						Module: &configs.Module{
+							ProviderRequirements: &configs.RequiredProviders{},
+						},
+					},
+					Providers: map[addrs.Provider]providers.ProviderSchema{
+						{
+							Hostname:  addrs.DefaultProviderRegistryHost,
+							Namespace: "hashicorp",
+							Type:      "test",
+						}: {
+							ResourceTypes: map[string]providers.Schema{
+								"test_resource": {
+									Body: &configschema.Block{
+										Attributes: map[string]*configschema.Attribute{
+											"value": {
+												Type: cty.String,
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			noProviderSchemas: true,
+			progress:          moduletest.Complete,
+			want: []map[string]interface{}{
+				{
+					"@level":    "info",
+					"@message":  "  \"run_block\"... pass",
+					"@module":   "terraform.ui",
+					"@testfile": "main.tftest.hcl",
+					"@testrun":  "run_block",
+					"test_run": map[string]interface{}{
+						"path":     "main.tftest.hcl",
+						"run":      "run_block",
+						"progress": "complete",
+						"status":   "pass",
+					},
+					"type": "test_run",
+				},
+				{
+					"@level":    "info",
+					"@message":  "-verbose flag enabled, printing plan",
+					"@module":   "terraform.ui",
+					"@testfile": "main.tftest.hcl",
+					"@testrun":  "run_block",
+					"test_plan": map[string]interface{}{
+						"plan_format_version":     "1.2",
+						"provider_format_version": "1.0",
+						"resource_changes": []interface{}{
+							map[string]interface{}{
+								"address": "test_resource.creating",
+								"change": map[string]interface{}{
+									"actions": []interface{}{"create"},
+									"after": map[string]interface{}{
+										"value": "foobar",
+									},
+									"after_sensitive":  map[string]interface{}{},
+									"after_unknown":    map[string]interface{}{},
+									"before":           nil,
+									"before_sensitive": false,
+								},
+								"mode":          "managed",
+								"name":          "creating",
+								"provider_name": "registry.terraform.io/hashicorp/test",
+								"type":          "test_resource",
+							},
+						},
+					},
+					"type": "test_plan",
+				},
+			},
+		},
+
+		"verbose_apply_no_provider_schemas": {
+			run: &moduletest.Run{
+				Name:   "run_block",
+				Status: moduletest.Pass,
+				Config: &configs.TestRun{
+					Command: configs.ApplyTestCommand,
+				},
+				Verbose: &moduletest.Verbose{
+					Plan: &plans.Plan{}, // empty plan
+					State: states.BuildState(func(state *states.SyncState) {
+						state.SetResourceInstanceCurrent(
+							addrs.AbsResourceInstance{
+								Module: addrs.RootModuleInstance,
+								Resource: addrs.ResourceInstance{
+									Resource: addrs.Resource{
+										Mode: addrs.ManagedResourceMode,
+										Type: "test_resource",
+										Name: "creating",
+									},
+								},
+							},
+							&states.ResourceInstanceObjectSrc{
+								AttrsJSON: []byte(`{"value":"foobar"}`),
+							},
+							addrs.AbsProviderConfig{
+								Module: addrs.RootModule,
+								Provider: addrs.Provider{
+									Hostname:  addrs.DefaultProviderRegistryHost,
+									Namespace: "hashicorp",
+									Type:      "test",
+								},
+							})
+					}),
+					Config: &configs.Config{
+						Module: &configs.Module{},
+					},
+					Providers: map[addrs.Provider]providers.ProviderSchema{
+						{
+							Hostname:  addrs.DefaultProviderRegistryHost,
+							Namespace: "hashicorp",
+							Type:      "test",
+						}: {
+							ResourceTypes: map[string]providers.Schema{
+								"test_resource": {
+									Body: &configschema.Block{
+										Attributes: map[string]*configschema.Attribute{
+											"value": {
+												Type: cty.String,
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			noProviderSchemas: true,
+			progress:          moduletest.Complete,
+			want: []map[string]interface{}{
+				{
+					"@level":    "info",
+					"@message":  "  \"run_block\"... pass",
+					"@module":   "terraform.ui",
+					"@testfile": "main.tftest.hcl",
+					"@testrun":  "run_block",
+					"test_run": map[string]interface{}{
+						"path":     "main.tftest.hcl",
+						"run":      "run_block",
+						"progress": "complete",
+						"status":   "pass",
+					},
+					"type": "test_run",
+				},
+				{
+					"@level":    "info",
+					"@message":  "-verbose flag enabled, printing state",
+					"@module":   "terraform.ui",
+					"@testfile": "main.tftest.hcl",
+					"@testrun":  "run_block",
+					"test_state": map[string]interface{}{
+						"state_format_version":    "1.0",
+						"provider_format_version": "1.0",
+						"root_module": map[string]interface{}{
+							"resources": []interface{}{
+								map[string]interface{}{
+									"address":          "test_resource.creating",
+									"mode":             "managed",
+									"name":             "creating",
+									"provider_name":    "registry.terraform.io/hashicorp/test",
+									"schema_version":   0.0,
+									"sensitive_values": map[string]interface{}{},
+									"type":             "test_resource",
+									"values": map[string]interface{}{
+										"value": "foobar",
+									},
+								},
+							},
+						},
+					},
+					"type": "test_state",
+				},
+			},
+		},
 	}
 	for name, tc := range tcs {
 		t.Run(name, func(t *testing.T) {
 			streams, done := terminal.StreamsForTesting(t)
-			view := NewTest(arguments.ViewJSON, NewView(streams))
+			view := NewTest(arguments.ViewJSON, NewView(streams), tc.noProviderSchemas)
 
 			file := &moduletest.File{Name: "main.tftest.hcl"}
 
@@ -3305,7 +3544,7 @@ func TestTestJSON_FatalInterruptSummary(t *testing.T) {
 	for name, tc := range tcs {
 		t.Run(name, func(t *testing.T) {
 			streams, done := terminal.StreamsForTesting(t)
-			view := NewTest(arguments.ViewJSON, NewView(streams))
+			view := NewTest(arguments.ViewJSON, NewView(streams), false)
 
 			file := &moduletest.File{Name: "main.tftest.hcl"}
 			run := &moduletest.Run{Name: "run_block"}
@@ -3327,7 +3566,7 @@ func dynamicValue(t *testing.T, value cty.Value, typ cty.Type) plans.DynamicValu
 func TestNewTest_Version(t *testing.T) {
 	t.Run("json view", func(t *testing.T) {
 		streams, done := terminal.StreamsForTesting(t)
-		v := NewTest(arguments.ViewJSON, NewView(streams))
+		v := NewTest(arguments.ViewJSON, NewView(streams), false)
 
 		v.Version()
 
@@ -3346,7 +3585,7 @@ func TestNewTest_Version(t *testing.T) {
 
 	t.Run("human view", func(t *testing.T) {
 		streams, done := terminal.StreamsForTesting(t)
-		v := NewTest(arguments.ViewHuman, NewView(streams))
+		v := NewTest(arguments.ViewHuman, NewView(streams), false)
 
 		v.Version()
 

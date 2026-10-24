@@ -34,31 +34,38 @@ import (
 // same emission with provider schemas left out of the message.
 func BenchmarkTestJSONRunVerbose(b *testing.B) {
 	b.Run("included", func(b *testing.B) {
-		benchmarkTestJSONRunVerbose(b)
+		benchmarkTestJSONRunVerbose(b, false)
+	})
+	b.Run("omitted", func(b *testing.B) {
+		benchmarkTestJSONRunVerbose(b, true)
 	})
 }
 
-func benchmarkTestJSONRunVerbose(b *testing.B) {
+func benchmarkTestJSONRunVerbose(b *testing.B, noProviderSchemas bool) {
 	streams := discardStreamsForBench(b)
-	view := NewTest(arguments.ViewJSON, NewView(streams))
+	view := NewTest(arguments.ViewJSON, NewView(streams), noProviderSchemas)
 
 	run, file := syntheticVerboseRun(b)
 
-	// Record the scale of the provider_schemas payload that each message
-	// carries in the "included" variant.
-	schemasJSON, err := json.Marshal(jsonprovider.MarshalForRenderer(&terraform.Schemas{
-		Providers: run.Verbose.Providers,
-	}))
-	if err != nil {
-		b.Fatalf("failed to marshal synthetic provider schemas: %s", err)
-	}
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		view.Run(run, file, moduletest.Complete, 0)
 	}
 	b.StopTimer()
-	b.ReportMetric(float64(len(schemasJSON)), "schema-bytes/msg")
+
+	// Record the scale of the provider_schemas payload that each message
+	// carries in the "included" variant. This is reported after the loop
+	// because ResetTimer clears custom metrics.
+	if !noProviderSchemas {
+		schemasJSON, err := json.Marshal(jsonprovider.MarshalForRenderer(&terraform.Schemas{
+			Providers: run.Verbose.Providers,
+		}))
+		if err != nil {
+			b.Fatalf("failed to marshal synthetic provider schemas: %s", err)
+		}
+		b.ReportMetric(float64(len(schemasJSON)), "schema-bytes/msg")
+	}
 }
 
 // discardStreamsForBench returns Streams writing to the null device, so that

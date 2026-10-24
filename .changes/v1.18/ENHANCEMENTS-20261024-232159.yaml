@@ -1,0 +1,8 @@
+kind: ENHANCEMENTS
+body: 'terraform test: New -no-provider-schemas option omits the provider schemas from verbose JSON test output, greatly reducing the output size for consumers that do not need the schemas'
+time: 2026-10-24T23:21:59.235158556+01:00
+custom:
+    # PLACEHOLDER PR NUMBER: "1" is not a real PR number. Replace it with the
+    # number of the upstream pull request before submitting (changie requires
+    # an integer of at least 1 here, so no clearer sentinel value is possible).
+    Issue: "1"

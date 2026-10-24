@@ -6507,7 +6507,10 @@ func removeOutputs(states map[string][]string) map[string][]string {
 // TestTest_VerboseJSONProviderSchemas characterises how verbose test JSON
 // output carries provider schemas: every completed run block emits its own
 // test_plan or test_state message and each of those messages repeats the full
-// provider schema set in its provider_schemas attribute.
+// provider schema set in its provider_schemas attribute. The
+// -no-provider-schemas option omits that attribute from every such message.
+// The views-level tests pin that everything else in those messages is
+// unchanged.
 func TestTest_VerboseJSONProviderSchemas(t *testing.T) {
 	tcs := map[string]struct {
 		args []string
@@ -6518,6 +6521,10 @@ func TestTest_VerboseJSONProviderSchemas(t *testing.T) {
 		"default": {
 			args:        []string{"-json", "-verbose", "-no-color"},
 			wantSchemas: true,
+		},
+		"omitted": {
+			args:        []string{"-json", "-verbose", "-no-color", "-no-provider-schemas"},
+			wantSchemas: false,
 		},
 	}
 

@@ -209,6 +209,58 @@ func TestParseTest(t *testing.T) {
 				),
 			},
 		},
+		"no-provider-schemas": {
+			args: []string{"-json", "-no-provider-schemas"},
+			want: &Test{
+				Filter:               nil,
+				TestDirectory:        "tests",
+				ViewType:             ViewJSON,
+				NoProviderSchemas:    true,
+				Vars:                 &Vars{},
+				OperationParallelism: 10,
+				RunParallelism:       10,
+			},
+			wantDiags: nil,
+		},
+		"incompatible flags: -no-provider-schemas without -json": {
+			args: []string{"-no-provider-schemas"},
+			want: &Test{
+				Filter:               nil,
+				TestDirectory:        "tests",
+				ViewType:             ViewHuman,
+				NoProviderSchemas:    true,
+				Vars:                 &Vars{},
+				OperationParallelism: 10,
+				RunParallelism:       10,
+			},
+			wantDiags: tfdiags.Diagnostics{
+				tfdiags.Sourceless(
+					tfdiags.Error,
+					"Incompatible command-line flags",
+					"The -no-provider-schemas option is only valid with the -json option.",
+				),
+			},
+		},
+		"incompatible flags: -no-provider-schemas and -cloud-run": {
+			args: []string{"-json", "-no-provider-schemas", "-cloud-run=foobar"},
+			want: &Test{
+				CloudRunSource:       "foobar",
+				Filter:               nil,
+				TestDirectory:        "tests",
+				ViewType:             ViewJSON,
+				NoProviderSchemas:    true,
+				Vars:                 &Vars{},
+				OperationParallelism: 10,
+				RunParallelism:       10,
+			},
+			wantDiags: tfdiags.Diagnostics{
+				tfdiags.Sourceless(
+					tfdiags.Error,
+					"Incompatible command-line flags",
+					"The -no-provider-schemas option is not currently compatible with remote test execution via the -cloud-run flag.",
+				),
+			},
+		},
 		"incompatible flags: -junit-xml and -cloud-run": {
 			args: []string{"-junit-xml=./output.xml", "-cloud-run=foobar"},
 			want: &Test{

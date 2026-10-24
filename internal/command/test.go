@@ -73,6 +73,13 @@ Options:
 
   -no-color             If specified, output won't contain any color.
 
+  -no-provider-schemas  If specified, the machine-readable output under -json
+                        omits the provider schemas from the plan and state
+                        messages printed for each run block under -verbose,
+                        which can substantially reduce the amount of output
+                        for consumers that do not need the schemas. Only
+                        valid with the -json option.
+
   -parallelism=n        Limit the number of concurrent operations within the 
   						plan/apply operation of a test run. Defaults to 10.
 
@@ -298,7 +305,7 @@ func (m *Meta) setupTestExecution(mode moduletest.CommandMode, command string, r
 
 	m.parallelism = preparation.Args.OperationParallelism
 
-	view := views.NewTest(preparation.Args.ViewType, m.View)
+	view := views.NewTest(preparation.Args.ViewType, m.View, preparation.Args.NoProviderSchemas)
 	preparation.View = view
 
 	// Log version output

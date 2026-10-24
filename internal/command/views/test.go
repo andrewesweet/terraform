@@ -83,11 +83,12 @@ type Test interface {
 	TFCRetryHook(attemptNum int, resp *http.Response)
 }
 
-func NewTest(vt arguments.ViewType, view *View) Test {
+func NewTest(vt arguments.ViewType, view *View, noProviderSchemas bool) Test {
 	switch vt {
 	case arguments.ViewJSON:
 		return &TestJSON{
-			view: NewJSONView(view),
+			view:              NewJSONView(view),
+			noProviderSchemas: noProviderSchemas,
 		}
 	case arguments.ViewHuman:
 		return &TestHuman{
@@ -400,6 +401,11 @@ type TestJSON struct {
 	CloudHooks
 
 	view *JSONView
+
+	// noProviderSchemas omits the provider_schemas attribute from the
+	// test_plan and test_state messages emitted for verbose run blocks. The
+	// rest of those messages is unaffected.
+	noProviderSchemas bool
 }
 
 var _ Test = (*TestJSON)(nil)
@@ -581,6 +587,15 @@ func (t *TestJSON) Run(run *moduletest.Run, file *moduletest.File, progress modu
 			Provisioners: run.Verbose.Provisioners,
 		}
 
+		// The provider schemas are repeated in full on the message for every
+		// run block, which dominates the size of verbose output for larger
+		// providers, so we only marshal them when the user has not asked us to
+		// omit them via the -no-provider-schemas option.
+		var providerSchemas map[string]*jsonprovider.Provider
+		if !t.noProviderSchemas {
+			providerSchemas = jsonprovider.MarshalForRenderer(schemas)
+		}
+
 		if run.Config.Command == configs.ApplyTestCommand {
 			// Then we'll print the state.
 			root, outputs, err := jsonstate.MarshalForRenderer(statefile.New(run.Verbose.State, file.Name, uint64(run.Index)), schemas)
@@ -595,7 +610,7 @@ func (t *TestJSON) Run(run *moduletest.Run, file *moduletest.File, progress modu
 					ProviderFormatVersion: jsonprovider.FormatVersion,
 					RootModule:            root,
 					RootModuleOutputs:     outputs,
-					ProviderSchemas:       jsonprovider.MarshalForRenderer(schemas),
+					ProviderSchemas:       providerSchemas,
 				}
 
 				t.view.log.Info(
@@ -619,7 +634,7 @@ func (t *TestJSON) Run(run *moduletest.Run, file *moduletest.File, progress modu
 					OutputChanges:         jsonPlan.OutputChanges,
 					ResourceChanges:       jsonPlan.ResourceChanges,
 					ResourceDrift:         jsonPlan.ResourceDrift,
-					ProviderSchemas:       jsonprovider.MarshalForRenderer(schemas),
+					ProviderSchemas:       providerSchemas,
 					RelevantAttributes:    jsonPlan.RelevantAttributes,
 					ActionInvocations:     jsonPlan.ActionInvocations,
 					DeferredChanges:       jsonPlan.DeferredChanges,

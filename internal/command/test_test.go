@@ -6503,3 +6503,128 @@ func removeOutputs(states map[string][]string) map[string][]string {
 
 	return states
 }
+
+// TestTest_VerboseJSONProviderSchemas characterises how verbose test JSON
+// output carries provider schemas: every completed run block emits its own
+// test_plan or test_state message and each of those messages repeats the full
+// provider schema set in its provider_schemas attribute.
+func TestTest_VerboseJSONProviderSchemas(t *testing.T) {
+	tcs := map[string]struct {
+		args []string
+		// wantSchemas indicates whether each verbose message is expected to
+		// carry a provider_schemas attribute.
+		wantSchemas bool
+	}{
+		"default": {
+			args:        []string{"-json", "-verbose", "-no-color"},
+			wantSchemas: true,
+		},
+	}
+
+	for name, tc := range tcs {
+		t.Run(name, func(t *testing.T) {
+			td := t.TempDir()
+			testCopyDir(t, testFixturePath(path.Join("test", "plan_then_apply")), td)
+			t.Chdir(td)
+
+			provider := testing_command.NewProvider(nil)
+			providerSource := newMockProviderSource(t, map[string][]string{
+				"test": {"1.0.0"},
+			})
+
+			streams, done := terminal.StreamsForTesting(t)
+			meta := Meta{
+				testingOverrides:          metaOverridesForProvider(provider.Provider),
+				Ui:                        testUiWrapped(t),
+				View:                      views.NewView(streams),
+				Streams:                   streams,
+				ProviderSource:            providerSource,
+				AllowExperimentalFeatures: true,
+			}
+
+			init := &InitCommand{
+				Meta: meta,
+			}
+
+			if code := init.Run(nil); code != 0 {
+				t.Fatalf("expected status code 0 but got %d: %s", code, done(t).All())
+			}
+
+			// discard the output from the init command
+			done(t)
+
+			// Reset the streams for the next command.
+			streams, done = terminal.StreamsForTesting(t)
+			meta.Streams = streams
+			meta.View = views.NewView(streams)
+
+			c := &TestCommand{
+				Meta: meta,
+			}
+
+			if code := c.Run(tc.args); code != 0 {
+				t.Fatalf("expected status code 0 but got %d: %s", code, done(t).All())
+			}
+			output := done(t)
+
+			// The plan_then_apply fixture has two run blocks: a plan run, which
+			// should emit a test_plan message, and an apply run, which should
+			// emit a test_state message.
+			var verboseMessages []map[string]interface{}
+			sawPlan, sawState := false, false
+			for _, line := range strings.Split(output.Stdout(), "\n") {
+				if len(line) == 0 {
+					continue
+				}
+
+				var obj map[string]interface{}
+				if err := json.Unmarshal([]byte(line), &obj); err != nil {
+					t.Fatalf("failed to unmarshal returned line: %s", line)
+				}
+
+				switch obj["type"].(string) {
+				case "test_plan":
+					sawPlan = true
+					verboseMessages = append(verboseMessages, obj)
+				case "test_state":
+					sawState = true
+					verboseMessages = append(verboseMessages, obj)
+				}
+			}
+
+			if !sawPlan || !sawState {
+				t.Fatalf("expected both a test_plan and a test_state message in the output:\n%s", output.Stdout())
+			}
+
+			if len(verboseMessages) != 2 {
+				t.Errorf("expected one verbose message per run block (2) but got %d", len(verboseMessages))
+			}
+
+			var firstSchemas interface{}
+			for ix, message := range verboseMessages {
+				payload, ok := message[message["type"].(string)].(map[string]interface{})
+				if !ok {
+					t.Fatalf("verbose message %d has no payload: %v", ix, message)
+				}
+
+				schemas, exists := payload["provider_schemas"]
+				if tc.wantSchemas {
+					if !exists {
+						t.Errorf("verbose message %d has no provider_schemas attribute: %v", ix, payload)
+						continue
+					}
+
+					// The full provider schema set is repeated, unchanged, on
+					// every run block's message.
+					if ix == 0 {
+						firstSchemas = schemas
+					} else if diff := cmp.Diff(firstSchemas, schemas); diff != "" {
+						t.Errorf("verbose message %d repeats different provider schemas than the first message: %s", ix, diff)
+					}
+				} else if exists {
+					t.Errorf("verbose message %d unexpectedly has a provider_schemas attribute: %v", ix, payload)
+				}
+			}
+		})
+	}
+}

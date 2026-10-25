@@ -15,10 +15,6 @@ import (
 	"github.com/hashicorp/go-hclog"
 )
 
-// captureStderr replaces os.Stderr with a pipe for the duration of fn, and
-// returns whatever was written to it. Loggers created inside fn will send
-// their output to the pipe, because newHCLogger reads os.Stderr when it is
-// called.
 func captureStderr(t *testing.T, fn func()) string {
 	t.Helper()
 
@@ -46,9 +42,6 @@ func captureStderr(t *testing.T, fn func()) string {
 	return string(out)
 }
 
-// wireStdLogger points the standard library logger at w, the same way the
-// logging package's init function does, and restores the previous wiring when
-// the test finishes.
 func wireStdLogger(t *testing.T, w io.Writer) {
 	t.Helper()
 
@@ -66,9 +59,6 @@ func wireStdLogger(t *testing.T, w io.Writer) {
 	log.SetOutput(w)
 }
 
-// stdWriterFor builds a global hclog logger from the current environment and
-// returns the standard library writer derived from it, matching the wiring in
-// the package's init function.
 func stdWriterFor() (hclog.Logger, io.Writer) {
 	logger := newHCLogger("")
 	return logger, logger.StandardWriter(&hclog.StandardLoggerOptions{InferLevels: true})
@@ -147,15 +137,6 @@ func TestStdLoggerEmitsJSONWhenJSONFormatRequested(t *testing.T) {
 	}
 }
 
-// The hclog intercept logger dispatches every entry to registered sinks
-// regardless of the logger's level, and the process standard logger is wired
-// through that same intercept logger. So while a sink is registered (crash-log
-// capture via TF_TEMP_LOG_PATH in production), messages written through the
-// standard library logger must still reach the sink even though the global
-// level is Off and the primary output stays silent. This pins the full
-// production flow: the init wiring routes the process logger to io.Discard
-// while Off, and logging.RegisterSink must rewire it back before the sink
-// starts receiving.
 func TestProcessStdLoggerDeliversToSinkWhileDisabled(t *testing.T) {
 	if os.Getenv("TF_LOG") != "" || os.Getenv("TF_LOG_CORE") != "" {
 		t.Skip("requires TF_LOG and TF_LOG_CORE to be unset")
@@ -205,9 +186,6 @@ func TestProcessStdLoggerDeliversToSinkWhileDisabled(t *testing.T) {
 	}
 }
 
-// With logging enabled, messages through the standard logger reach both the
-// primary output and any sink registered on the same logger, exactly as on
-// the unmodified wiring.
 func TestStdLoggerMessagesReachSinksWhileEnabled(t *testing.T) {
 	t.Setenv("TF_LOG", "trace")
 
@@ -336,11 +314,6 @@ func TestGlobalLogLevelCoreFallback(t *testing.T) {
 	}
 }
 
-// When logging is disabled and no sink is registered the standard logger must
-// be routed to exactly io.Discard, because Go's log package applies its
-// formatting fast path only when the writer is io.Discard. When logging is
-// enabled, or while any sink is registered (sinks receive every level), the
-// hclog standard writer must be used as before.
 func TestStandardLogWriterSelection(t *testing.T) {
 	t.Setenv("TF_LOG", "")
 	logger, stdWriter := stdWriterFor()
@@ -362,10 +335,6 @@ func TestStandardLogWriterSelection(t *testing.T) {
 	}
 }
 
-// The test binary runs without TF_LOG set, so the init wiring in this package
-// has routed the process-wide standard library logger. Go's log package only
-// applies its fast path when the writer is exactly io.Discard, so assert
-// identity rather than behaviour.
 func TestProcessStdLoggerDiscardedWhenLoggingDisabled(t *testing.T) {
 	if os.Getenv("TF_LOG") != "" || os.Getenv("TF_LOG_CORE") != "" {
 		t.Skip("requires TF_LOG and TF_LOG_CORE to be unset")
@@ -375,10 +344,6 @@ func TestProcessStdLoggerDiscardedWhenLoggingDisabled(t *testing.T) {
 	}
 }
 
-// BenchmarkStdLogPrintfDisabled times a representative log.Printf call with
-// logging disabled (TF_LOG unset), which is how terraform runs in automation
-// and tests. The benchmark guards its own precondition so that it cannot
-// silently measure the wrong wiring.
 func BenchmarkStdLogPrintfDisabled(b *testing.B) {
 	if HCLogger().GetLevel() != hclog.Off {
 		b.Skip("requires TF_LOG to be unset so that logging is disabled")
@@ -389,9 +354,6 @@ func BenchmarkStdLogPrintfDisabled(b *testing.B) {
 	}
 }
 
-// BenchmarkStdLogPrintfEnabled times the same call with logging enabled at
-// TRACE level to show that the enabled path is unchanged. Run the test binary
-// with TF_LOG=trace (and stderr redirected) for this benchmark.
 func BenchmarkStdLogPrintfEnabled(b *testing.B) {
 	if HCLogger().GetLevel() != hclog.Trace {
 		b.Skip("requires TF_LOG=trace")
@@ -402,9 +364,6 @@ func BenchmarkStdLogPrintfEnabled(b *testing.B) {
 	}
 }
 
-// An invalid TF_LOG value must keep logging enabled at TRACE level (the
-// warning is printed to stderr), so it must not take any logging-disabled
-// fast path.
 func TestInvalidLogLevelStillEnablesLogging(t *testing.T) {
 	t.Setenv("TF_LOG", "invalid-level-value")
 

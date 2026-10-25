@@ -18,6 +18,7 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -1987,6 +1988,100 @@ func TestTest_ProviderAlias(t *testing.T) {
 		} else {
 			t.Errorf("should have deleted all resources on completion but left %d", len(store.Data))
 		}
+	}
+}
+
+func TestTest_ProviderReuseAcrossFiles(t *testing.T) {
+	td := t.TempDir()
+	testCopyDir(t, testFixturePath(path.Join("test", "provider_reuse_across_files")), td)
+	t.Chdir(td)
+
+	data := func(value string) cty.Value {
+		return cty.ObjectVal(map[string]cty.Value{
+			"id":                   cty.StringVal("shared"),
+			"interrupt_count":      cty.NullVal(cty.Number),
+			"value":                cty.StringVal(value),
+			"write_only":           cty.NullVal(cty.String),
+			"create_wait_seconds":  cty.NullVal(cty.Number),
+			"destroy_fail":         cty.False,
+			"apply_fail":           cty.False,
+			"destroy_wait_seconds": cty.NullVal(cty.Number),
+			"defer":                cty.NullVal(cty.Bool),
+			"deprecated":           cty.NullVal(cty.String),
+		})
+	}
+
+	// Each file configures the real provider with its own data_prefix, so it
+	// can only read its own value.
+	store := &testing_command.ResourceStore{
+		Data: map[string]cty.Value{
+			"a/shared": data("configured-for-a"),
+			"b/shared": data("configured-for-b"),
+			"c/shared": data("configured-for-c"),
+		},
+	}
+
+	// Real provider plugins populate the global schema cache, so schema
+	// lookups do not launch new instances. Do the same here so that the count
+	// below only includes the instances each test file starts.
+	providers.SchemaCache.Set(addrs.NewDefaultProvider("test"), *testing_command.ProviderSchema)
+	t.Cleanup(providers.SchemaCache.Clear)
+
+	var launches atomic.Int32
+	providerSource := newMockProviderSource(t, map[string][]string{
+		"test": {"1.0.0"},
+	})
+
+	streams, done := terminal.StreamsForTesting(t)
+	view := views.NewView(streams)
+	ui := testUiWrapped(t)
+
+	meta := Meta{
+		testingOverrides: &testingOverrides{
+			Providers: map[addrs.Provider]providers.Factory{
+				addrs.NewDefaultProvider("test"): func() (providers.Interface, error) {
+					launches.Add(1)
+					return testing_command.NewProvider(store).Provider, nil
+				},
+			},
+		},
+		Ui:             ui,
+		View:           view,
+		Streams:        streams,
+		ProviderSource: providerSource,
+	}
+
+	init := &InitCommand{
+		Meta: meta,
+	}
+
+	output := done(t)
+
+	if code := init.Run([]string{"-no-color"}); code != 0 {
+		t.Fatalf("expected status code 0 but got %d: %s", code, output.All())
+	}
+
+	// Reset the streams and the launch count for the test command.
+	streams, done = terminal.StreamsForTesting(t)
+	meta.Streams = streams
+	meta.View = views.NewView(streams)
+	launches.Store(0)
+
+	command := &TestCommand{
+		Meta: meta,
+	}
+
+	code := command.Run([]string{"-no-color"})
+	output = done(t)
+
+	if code != 0 {
+		t.Errorf("expected status code 0 but got %d: %s", code, output.All())
+	}
+
+	// Each of the three files launches its configured provider and the
+	// provider behind its mock.
+	if got, want := launches.Load(), int32(6); got != want {
+		t.Errorf("expected %d provider launches but got %d", want, got)
 	}
 }
 

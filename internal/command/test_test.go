@@ -6504,18 +6504,9 @@ func removeOutputs(states map[string][]string) map[string][]string {
 	return states
 }
 
-// TestTest_VerboseJSONProviderSchemas characterises how verbose test JSON
-// output carries provider schemas: every completed run block emits its own
-// test_plan or test_state message and each of those messages repeats the full
-// provider schema set in its provider_schemas attribute. The
-// -no-provider-schemas option omits that attribute from every such message.
-// The views-level tests pin that everything else in those messages is
-// unchanged.
 func TestTest_VerboseJSONProviderSchemas(t *testing.T) {
 	tcs := map[string]struct {
-		args []string
-		// wantSchemas indicates whether each verbose message is expected to
-		// carry a provider_schemas attribute.
+		args        []string
 		wantSchemas bool
 	}{
 		"default": {
@@ -6557,10 +6548,8 @@ func TestTest_VerboseJSONProviderSchemas(t *testing.T) {
 				t.Fatalf("expected status code 0 but got %d: %s", code, done(t).All())
 			}
 
-			// discard the output from the init command
 			done(t)
 
-			// Reset the streams for the next command.
 			streams, done = terminal.StreamsForTesting(t)
 			meta.Streams = streams
 			meta.View = views.NewView(streams)
@@ -6574,9 +6563,6 @@ func TestTest_VerboseJSONProviderSchemas(t *testing.T) {
 			}
 			output := done(t)
 
-			// The plan_then_apply fixture has two run blocks: a plan run, which
-			// should emit a test_plan message, and an apply run, which should
-			// emit a test_state message.
 			var verboseMessages []map[string]interface{}
 			sawPlan, sawState := false, false
 			for _, line := range strings.Split(output.Stdout(), "\n") {
@@ -6621,8 +6607,6 @@ func TestTest_VerboseJSONProviderSchemas(t *testing.T) {
 						continue
 					}
 
-					// The full provider schema set is repeated, unchanged, on
-					// every run block's message.
 					if ix == 0 {
 						firstSchemas = schemas
 					} else if diff := cmp.Diff(firstSchemas, schemas); diff != "" {

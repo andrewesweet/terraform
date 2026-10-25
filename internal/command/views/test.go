@@ -402,9 +402,6 @@ type TestJSON struct {
 
 	view *JSONView
 
-	// noProviderSchemas omits the provider_schemas attribute from the
-	// test_plan and test_state messages emitted for verbose run blocks. The
-	// rest of those messages is unaffected.
 	noProviderSchemas bool
 }
 
@@ -587,10 +584,6 @@ func (t *TestJSON) Run(run *moduletest.Run, file *moduletest.File, progress modu
 			Provisioners: run.Verbose.Provisioners,
 		}
 
-		// The provider schemas are repeated in full on the message for every
-		// run block, which dominates the size of verbose output for larger
-		// providers, so we only marshal them when the user has not asked us to
-		// omit them via the -no-provider-schemas option.
 		var providerSchemas map[string]*jsonprovider.Provider
 		if !t.noProviderSchemas {
 			providerSchemas = jsonprovider.MarshalForRenderer(schemas)

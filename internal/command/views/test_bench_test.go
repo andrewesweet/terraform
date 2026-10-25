@@ -24,14 +24,6 @@ import (
 	"github.com/hashicorp/terraform/internal/terraform"
 )
 
-// BenchmarkTestJSONRunVerbose measures the cost of emitting the per-run-block
-// verbose message from `terraform test -json -verbose` (the test_plan message
-// here; the test_state path encodes the same provider_schemas attribute) with
-// a provider whose schema is realistic for a large mainstream provider.
-//
-// The "included" variant is the existing behaviour: every run block's message
-// repeats the full provider schema set. The "omitted" variant measures the
-// same emission with provider schemas left out of the message.
 func BenchmarkTestJSONRunVerbose(b *testing.B) {
 	b.Run("included", func(b *testing.B) {
 		benchmarkTestJSONRunVerbose(b, false)
@@ -54,9 +46,6 @@ func benchmarkTestJSONRunVerbose(b *testing.B, noProviderSchemas bool) {
 	}
 	b.StopTimer()
 
-	// Record the scale of the provider_schemas payload that each message
-	// carries in the "included" variant. This is reported after the loop
-	// because ResetTimer clears custom metrics.
 	if !noProviderSchemas {
 		schemasJSON, err := json.Marshal(jsonprovider.MarshalForRenderer(&terraform.Schemas{
 			Providers: run.Verbose.Providers,
@@ -68,9 +57,6 @@ func benchmarkTestJSONRunVerbose(b *testing.B, noProviderSchemas bool) {
 	}
 }
 
-// discardStreamsForBench returns Streams writing to the null device, so that
-// benchmark iteration cost is dominated by producing the JSON message rather
-// than by the terminal test harness.
 func discardStreamsForBench(tb testing.TB) *terminal.Streams {
 	tb.Helper()
 
@@ -87,11 +73,6 @@ func discardStreamsForBench(tb testing.TB) *terminal.Streams {
 	}
 }
 
-// syntheticVerboseRun returns a completed plan-style test run block carrying
-// one resource change and a provider schema of realistic size for a large
-// mainstream provider (hundreds of resource types with attributed, documented
-// blocks, as e.g. the major cloud providers have). No network or provider
-// process is involved.
 func syntheticVerboseRun(tb testing.TB) (*moduletest.Run, *moduletest.File) {
 	tb.Helper()
 
@@ -165,10 +146,6 @@ func syntheticVerboseRun(tb testing.TB) (*moduletest.Run, *moduletest.File) {
 	return run, &moduletest.File{Name: "main.tftest.hcl"}
 }
 
-// syntheticProviderSchemas builds a schema set sized like a large mainstream
-// provider: 250 resource types and 100 data sources with documented attribute
-// blocks, plus a provider block and 40 function signatures. The descriptions
-// dominate real provider schema payloads, so every attribute carries one.
 func syntheticProviderSchemas() map[addrs.Provider]providers.ProviderSchema {
 	const (
 		resourceTypes = 250
@@ -183,8 +160,6 @@ func syntheticProviderSchemas() map[addrs.Provider]providers.ProviderSchema {
 	}
 
 	resourceTypesMap := syntheticSchemaMap("resource", resourceTypes, 12, 2)
-	// The benchmarked run block makes a change to a test_resource.creating
-	// instance, so the schema set must include that resource type.
 	resourceTypesMap["test_resource"] = providers.Schema{
 		Body: &configschema.Block{
 			Attributes: map[string]*configschema.Attribute{

@@ -2007,7 +2007,6 @@ func TestTest_ProviderReuseAcrossFiles(t *testing.T) {
 			"apply_fail":           cty.False,
 			"destroy_wait_seconds": cty.NullVal(cty.Number),
 			"defer":                cty.NullVal(cty.Bool),
-			"deprecated":           cty.NullVal(cty.String),
 		})
 	}
 

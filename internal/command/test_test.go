@@ -2078,9 +2078,9 @@ func TestTest_ProviderReuseAcrossFiles(t *testing.T) {
 		t.Errorf("expected status code 0 but got %d: %s", code, output.All())
 	}
 
-	// Each of the three files launches its configured provider and the
-	// provider behind its mock.
-	if got, want := launches.Load(), int32(6); got != want {
+	// Each of the three files launches its configured provider, while the
+	// provider behind the mocks is launched once and shared by all three.
+	if got, want := launches.Load(), int32(4); got != want {
 		t.Errorf("expected %d provider launches but got %d", want, got)
 	}
 }

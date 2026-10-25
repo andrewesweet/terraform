@@ -1675,6 +1675,11 @@ func (p *GRPCProvider) Close() error {
 	return nil
 }
 
+// Exited reports whether the provider's plugin process has exited.
+func (p *GRPCProvider) Exited() bool {
+	return p.PluginClient != nil && p.PluginClient.Exited()
+}
+
 // Decode a DynamicValue from either the JSON or MsgPack encoding.
 func decodeDynamicValue(v *proto.DynamicValue, ty cty.Type) (cty.Value, error) {
 	// always return a valid value

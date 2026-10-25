@@ -27,6 +27,10 @@ type TestGraphBuilder struct {
 	File        *moduletest.File
 	ContextOpts *terraform.ContextOpts
 	CommandMode moduletest.CommandMode
+
+	// MockedProviders shares the providers behind mock_provider blocks
+	// between the test files of a run.
+	MockedProviders *MockedProviders
 }
 
 type graphOptions struct {
@@ -67,9 +71,10 @@ func (b *TestGraphBuilder) Steps() []terraform.GraphTransformer {
 			return nil
 		}),
 		&TestProvidersTransformer{
-			Config:    b.Config,
-			File:      b.File,
-			Providers: opts.ContextOpts.Providers,
+			Config:          b.Config,
+			File:            b.File,
+			Providers:       opts.ContextOpts.Providers,
+			MockedProviders: b.MockedProviders,
 		},
 		&ReferenceTransformer{},
 		&CloseTestGraphTransformer{},

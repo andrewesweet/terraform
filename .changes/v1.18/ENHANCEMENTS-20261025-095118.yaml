@@ -1,0 +1,5 @@
+kind: ENHANCEMENTS
+body: 'terraform test: Test files in the same run now share the provider instances behind `mock_provider` blocks, instead of launching every mocked provider again for each file'
+time: 2026-10-25T09:51:18.080997146Z
+custom:
+    Issue: "99999" # PLACEHOLDER: replace 99999 with the upstream PR number

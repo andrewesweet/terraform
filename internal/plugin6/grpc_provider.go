@@ -1903,6 +1903,11 @@ func (p *GRPCProvider) Close() error {
 	return nil
 }
 
+// Exited reports whether the provider's plugin process has exited.
+func (p *GRPCProvider) Exited() bool {
+	return p.PluginClient != nil && p.PluginClient.Exited()
+}
+
 func (p *GRPCProvider) PlanAction(r providers.PlanActionRequest) (resp providers.PlanActionResponse) {
 	logger.Trace("GRPCProvider: PlanAction")
 

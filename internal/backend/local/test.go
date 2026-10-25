@@ -93,9 +93,7 @@ func (runner *TestSuiteRunner) Cancel() {
 	runner.Cancelled = true
 }
 
-func (runner *TestSuiteRunner) Test(experimentsAllowed bool) (moduletest.Status, tfdiags.Diagnostics) {
-	var diags tfdiags.Diagnostics
-
+func (runner *TestSuiteRunner) Test(experimentsAllowed bool) (_ moduletest.Status, diags tfdiags.Diagnostics) {
 	if runner.Concurrency < 1 {
 		runner.Concurrency = 10
 	}
@@ -126,6 +124,18 @@ func (runner *TestSuiteRunner) Test(experimentsAllowed bool) (moduletest.Status,
 	// collisions, as the test directory variables should take precedence.
 	maps.Copy(testDirectoryGlobalVariables, runner.GlobalTestVariables)
 
+	// The providers behind mock_provider blocks are shared by every test
+	// file, and closed once they have all finished.
+	mockedProviders := &graph.MockedProviders{}
+	defer func() {
+		if err := mockedProviders.Close(); err != nil {
+			diags = diags.Append(tfdiags.Sourceless(
+				tfdiags.Error,
+				"Failed to close provider",
+				fmt.Sprintf("Failed to close provider: %s", err)))
+		}
+	}()
+
 	suite.Status = moduletest.Pass
 	for _, name := range slices.Sorted(maps.Keys(suite.Files)) {
 		if runner.Cancelled {
@@ -136,6 +146,7 @@ func (runner *TestSuiteRunner) Test(experimentsAllowed bool) (moduletest.Status,
 			Suite:                        runner,
 			TestDirectoryGlobalVariables: testDirectoryGlobalVariables,
 			Manifest:                     manifest,
+			MockedProviders:              mockedProviders,
 		}
 		runner.View.File(file, moduletest.Starting)
 		fileRunner.Test(file)
@@ -237,6 +248,7 @@ type TestFileRunner struct {
 	Suite                        *TestSuiteRunner
 	TestDirectoryGlobalVariables map[string]arguments.UnparsedVariableValue
 	Manifest                     *teststates.TestManifest
+	MockedProviders              *graph.MockedProviders
 }
 
 func (runner *TestFileRunner) Test(file *moduletest.File) {
@@ -302,10 +314,11 @@ func (runner *TestFileRunner) Test(file *moduletest.File) {
 
 	// Build the graph for the file.
 	b := graph.TestGraphBuilder{
-		Config:      runner.Suite.Config,
-		File:        file,
-		ContextOpts: runner.Suite.Opts,
-		CommandMode: runner.Suite.CommandMode,
+		Config:          runner.Suite.Config,
+		File:            file,
+		ContextOpts:     runner.Suite.Opts,
+		CommandMode:     runner.Suite.CommandMode,
+		MockedProviders: runner.MockedProviders,
 	}
 	g, diags := b.Build()
 	file.Diagnostics = file.Diagnostics.Append(diags)

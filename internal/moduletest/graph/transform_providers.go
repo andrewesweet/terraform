@@ -4,6 +4,7 @@
 package graph
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/hashicorp/terraform/internal/addrs"
@@ -17,9 +18,10 @@ import (
 // from the module configurations that the test runs depend on and attaches the
 // required providers to the test run nodes.
 type TestProvidersTransformer struct {
-	Config    *configs.Config
-	File      *moduletest.File
-	Providers map[addrs.Provider]providers.Factory
+	Config          *configs.Config
+	File            *moduletest.File
+	Providers       map[addrs.Provider]providers.Factory
+	MockedProviders *MockedProviders
 }
 
 func (t *TestProvidersTransformer) Transform(g *terraform.Graph) error {
@@ -39,7 +41,13 @@ func (t *TestProvidersTransformer) Transform(g *terraform.Graph) error {
 			return fmt.Errorf("unknown provider %s", provider)
 		}
 
-		impl, err := factory()
+		var impl providers.Interface
+		var err error
+		if config.Mock {
+			impl, err = t.MockedProviders.get(provider, factory)
+		} else {
+			impl, err = factory()
+		}
 		if err != nil {
 			return fmt.Errorf("could not create provider instance: %w", err)
 		}
@@ -120,5 +128,64 @@ func (t *TestProvidersTransformer) Transform(g *terraform.Graph) error {
 			}
 		}
 	}
+	return nil
+}
+
+// MockedProviders holds the provider instances behind mock_provider blocks,
+// so that every test file in a run can share them.
+//
+// A mock never configures the provider behind it (see
+// providers.Mock.ConfigureProvider). It only uses that provider for calls that
+// need no configuration, such as reading the schema, validating configuration
+// and calling provider-defined functions, while each file's mock data and
+// overrides stay in that file's own providers.Mock. Sharing the instance
+// therefore carries no configuration or mock data from one file to the next,
+// and each provider is launched once per run instead of once per test file.
+type MockedProviders struct {
+	instances map[addrs.Provider]providers.Interface
+}
+
+// get returns the shared instance of the given provider. It launches the
+// instance with factory if no instance has been launched yet, or if the
+// previous instance's plugin process has exited.
+func (m *MockedProviders) get(addr addrs.Provider, factory providers.Factory) (providers.Interface, error) {
+	if impl, ok := m.instances[addr]; ok {
+		if p, ok := impl.(interface{ Exited() bool }); !ok || !p.Exited() {
+			return sharedProvider{impl}, nil
+		}
+		// The plugin crashed during an earlier file. Later files start a
+		// new instance, as they would if each file launched its own.
+		impl.Close()
+	}
+
+	impl, err := factory()
+	if err != nil {
+		return nil, err
+	}
+	if m.instances == nil {
+		m.instances = make(map[addrs.Provider]providers.Interface)
+	}
+	m.instances[addr] = impl
+	return sharedProvider{impl}, nil
+}
+
+// Close closes every shared provider instance. Call it once all test files
+// have finished.
+func (m *MockedProviders) Close() error {
+	var errs []error
+	for _, impl := range m.instances {
+		errs = append(errs, impl.Close())
+	}
+	m.instances = nil
+	return errors.Join(errs...)
+}
+
+// sharedProvider keeps a test file from closing a shared provider instance
+// when the file finishes.
+type sharedProvider struct {
+	providers.Interface
+}
+
+func (sharedProvider) Close() error {
 	return nil
 }

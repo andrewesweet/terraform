@@ -9,6 +9,7 @@ import (
 	"log"
 	"os"
 	"strings"
+	"sync/atomic"
 	"syscall"
 
 	"github.com/hashicorp/go-hclog"
@@ -49,6 +50,13 @@ var (
 		maxLines: 100,
 	}
 
+	// sinksRegistered records whether any sink has ever been registered on
+	// the global logger. It is sticky for the life of the process: a
+	// registered sink receives every entry at every level regardless of the
+	// logger's level, so once one exists the standard logger must keep
+	// routing through hclog so the sink sees standard-log messages too.
+	sinksRegistered atomic.Bool
+
 	GraphTrace = os.Getenv(envGraphTrace) != ""
 )
 
@@ -66,16 +74,19 @@ func init() {
 // derived from the global logger.
 //
 // When logging is disabled (the global level is Off, the default when TF_LOG
-// and the related variables are unset) the standard writer would format every
-// message only for the logger to discard it at its level check. Go's log
-// package instead skips all formatting when its output is exactly io.Discard,
-// so we route the standard logger there while logging is off.
+// and the related variables are unset) and no sinks are registered, the
+// standard writer would format every message only for the logger to discard
+// it at its level check. Go's log package instead skips all formatting when
+// its output is exactly io.Discard, so we route the standard logger there.
 //
-// Messages written through the standard logger never reach the sinks
-// registered on the global logger, so this does not change what crash logs
-// capture; see TestStdLoggerMessagesDoNotReachSinks.
+// A registered sink, however, receives every entry at every level regardless
+// of the logger's level (crash-log capture depends on this), so while any
+// sink is registered the standard logger keeps its hclog wiring: messages
+// continue to reach the sink while the primary output stays silent. Sinks
+// are never unregistered, so the decision only ever moves from io.Discard
+// back to the standard writer.
 func standardLogWriter(logger hclog.Logger, stdWriter io.Writer) io.Writer {
-	if logger.GetLevel() == hclog.Off {
+	if logger.GetLevel() == hclog.Off && !sinksRegistered.Load() {
 		return io.Discard
 	}
 	return stdWriter
@@ -83,14 +94,22 @@ func standardLogWriter(logger hclog.Logger, stdWriter io.Writer) io.Writer {
 
 // SetupTempLog adds a new log sink which writes all logs to the given file.
 func RegisterSink(f *os.File) {
+	if f == nil {
+		return
+	}
 	l, ok := logger.(hclog.InterceptLogger)
 	if !ok {
 		panic("global logger is not an InterceptLogger")
 	}
 
-	if f == nil {
-		return
-	}
+	// From this point on, standard-log messages must keep flowing through
+	// hclog so that the sink receives them even while the level is Off.
+	// Rewire the standard logger before the sink starts receiving, so no
+	// line is dropped in between. The flag is sticky: hclog sinks cannot be
+	// relied on to go away again, and any later registration would need the
+	// same guarantee.
+	sinksRegistered.Store(true)
+	log.SetOutput(standardLogWriter(logger, logWriter))
 
 	l.RegisterSink(hclog.NewSinkAdapter(&hclog.LoggerOptions{
 		Level:  hclog.Trace,

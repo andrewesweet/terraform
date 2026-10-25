@@ -147,45 +147,91 @@ func TestStdLoggerEmitsJSONWhenJSONFormatRequested(t *testing.T) {
 	}
 }
 
-// The standard writer feeds the logger's underlying implementation, not the
-// InterceptLogger wrapper, so messages arriving through the standard logger
-// never reach registered sinks, while direct hclog API calls do (sinks are
-// dispatched independently of the global level, which is how crash logs
-// capture anything at all when TF_LOG is unset). This pins that routing so
-// that routing the standard logger elsewhere cannot silently change what
-// crash logs capture.
-func TestStdLoggerMessagesDoNotReachSinks(t *testing.T) {
-	t.Run("logging disabled", func(t *testing.T) {
-		t.Setenv("TF_LOG", "")
-		testStdLoggerSinkRouting(t)
-	})
-	t.Run("logging enabled", func(t *testing.T) {
-		t.Setenv("TF_LOG", "trace")
-		testStdLoggerSinkRouting(t)
-	})
-}
-
-func testStdLoggerSinkRouting(t *testing.T) {
-	t.Helper()
+// The hclog intercept logger dispatches every entry to registered sinks
+// regardless of the logger's level, and the process standard logger is wired
+// through that same intercept logger. So while a sink is registered (crash-log
+// capture via TF_TEMP_LOG_PATH in production), messages written through the
+// standard library logger must still reach the sink even though the global
+// level is Off and the primary output stays silent. This pins the full
+// production flow: the init wiring routes the process logger to io.Discard
+// while Off, and logging.RegisterSink must rewire it back before the sink
+// starts receiving.
+func TestProcessStdLoggerDeliversToSinkWhileDisabled(t *testing.T) {
+	if os.Getenv("TF_LOG") != "" || os.Getenv("TF_LOG_CORE") != "" {
+		t.Skip("requires TF_LOG and TF_LOG_CORE to be unset")
+	}
+	if log.Writer() != io.Discard {
+		t.Fatalf("test precondition: standard logger output is %T, want io.Discard", log.Writer())
+	}
 
 	sinkPath := filepath.Join(t.TempDir(), "sink.log")
 	f, err := os.OpenFile(sinkPath, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 	if err != nil {
 		t.Fatalf("open sink file: %s", err)
 	}
+	defer f.Close()
 
-	captureStderr(t, func() {
+	intercept, ok := logger.(hclog.InterceptLogger)
+	if !ok {
+		t.Fatal("global logger is not an InterceptLogger")
+	}
+	adapter := hclog.NewSinkAdapter(&hclog.LoggerOptions{
+		Level:  hclog.Trace,
+		Output: f,
+	})
+
+	origWriter := log.Writer()
+	RegisterSink(f)
+	t.Cleanup(func() {
+		log.SetOutput(origWriter)
+		sinksRegistered.Store(false)
+		intercept.DeregisterSink(adapter)
+	})
+
+	captured := captureStderr(t, func() {
+		log.Printf("[DEBUG] hello %s", "world")
+	})
+
+	if strings.Contains(captured, "hello world") {
+		t.Errorf("primary output unexpectedly received the message while Off:\n%s", captured)
+	}
+
+	data, err := os.ReadFile(sinkPath)
+	if err != nil {
+		t.Fatalf("read sink file: %s", err)
+	}
+	if !strings.Contains(string(data), "hello world") {
+		t.Errorf("sink did not receive the standard-logger message while logging is disabled; sink file:\n%s", data)
+	}
+}
+
+// With logging enabled, messages through the standard logger reach both the
+// primary output and any sink registered on the same logger, exactly as on
+// the unmodified wiring.
+func TestStdLoggerMessagesReachSinksWhileEnabled(t *testing.T) {
+	t.Setenv("TF_LOG", "trace")
+
+	sinkPath := filepath.Join(t.TempDir(), "sink.log")
+	f, err := os.OpenFile(sinkPath, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	if err != nil {
+		t.Fatalf("open sink file: %s", err)
+	}
+	defer f.Close()
+
+	captured := captureStderr(t, func() {
 		logger := newHCLogger("")
 		intercept, ok := logger.(hclog.InterceptLogger)
 		if !ok {
-			t.Fatal("global logger is not an InterceptLogger")
+			t.Fatal("fresh logger is not an InterceptLogger")
 		}
-		intercept.RegisterSink(hclog.NewSinkAdapter(&hclog.LoggerOptions{
+		adapter := hclog.NewSinkAdapter(&hclog.LoggerOptions{
 			Level:  hclog.Trace,
 			Output: f,
-		}))
+		})
+		intercept.RegisterSink(adapter)
+		t.Cleanup(func() { intercept.DeregisterSink(adapter) })
 
-		_, stdWriter := stdWriterFor()
+		stdWriter := logger.StandardWriter(&hclog.StandardLoggerOptions{InferLevels: true})
 		wireStdLogger(t, stdWriter)
 		if log.Writer() != io.Writer(stdWriter) {
 			t.Fatal("test setup: standard logger is not wired to the fresh writer")
@@ -194,17 +240,19 @@ func testStdLoggerSinkRouting(t *testing.T) {
 		log.Printf("[DEBUG] hello %s", "world") // through the standard logger
 		logger.Info("direct call")              // through the hclog API
 	})
-	f.Close()
 
 	data, err := os.ReadFile(sinkPath)
 	if err != nil {
 		t.Fatalf("read sink file: %s", err)
 	}
-	if strings.Contains(string(data), "hello world") {
-		t.Errorf("standard logger message unexpectedly reached the sink:\n%s", data)
+	if !strings.Contains(string(data), "hello world") {
+		t.Errorf("sink stopped capturing standard-logger messages while logging is enabled:\n%s", data)
 	}
 	if !strings.Contains(string(data), "direct call") {
 		t.Errorf("sink stopped capturing direct hclog calls:\n%s", data)
+	}
+	if !strings.Contains(captured, "hello world") {
+		t.Errorf("primary output lost the standard-logger message while logging is enabled:\n%s", captured)
 	}
 }
 
@@ -288,16 +336,24 @@ func TestGlobalLogLevelCoreFallback(t *testing.T) {
 	}
 }
 
-// When logging is disabled the standard logger must be routed to exactly
-// io.Discard, because Go's log package applies its formatting fast path only
-// when the writer is io.Discard. When logging is enabled the hclog standard
-// writer must be used as before.
+// When logging is disabled and no sink is registered the standard logger must
+// be routed to exactly io.Discard, because Go's log package applies its
+// formatting fast path only when the writer is io.Discard. When logging is
+// enabled, or while any sink is registered (sinks receive every level), the
+// hclog standard writer must be used as before.
 func TestStandardLogWriterSelection(t *testing.T) {
 	t.Setenv("TF_LOG", "")
 	logger, stdWriter := stdWriterFor()
 	if got := standardLogWriter(logger, stdWriter); got != io.Discard {
 		t.Fatalf("expected io.Discard when the global level is off, got %T", got)
 	}
+
+	sinksRegistered.Store(true)
+	t.Cleanup(func() { sinksRegistered.Store(false) })
+	if got := standardLogWriter(logger, stdWriter); got != io.Writer(stdWriter) {
+		t.Fatalf("expected the hclog standard writer while a sink is registered, got %T", got)
+	}
+	sinksRegistered.Store(false)
 
 	t.Setenv("TF_LOG", "trace")
 	logger, stdWriter = stdWriterFor()

@@ -17,4 +17,3 @@ run "third" {
   state_key = "third"
   parallel = true
 }
-

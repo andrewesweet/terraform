@@ -9,4 +9,3 @@ run "second" {
 run "third" {
   variables { trigger = "third" }
 }
-

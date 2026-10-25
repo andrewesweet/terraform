@@ -1,0 +1,34 @@
+main.tftest.hcl... in progress
+  run "third"... fail
+  run "first"... fail
+  run "second"... fail
+main.tftest.hcl... tearing down
+main.tftest.hcl... fail
+
+Failure! 0 passed, 3 failed.
+
+--- stderr ---
+
+Error: Reference to undeclared input variable
+
+  on main.tf line 2, in resource "terraform_data" "example":
+   2:   input = var.not_real
+
+An input variable with the name "not_real" has not been declared. This
+variable can be declared with a variable "not_real" {} block.
+
+Error: Reference to undeclared input variable
+
+  on main.tf line 2, in resource "terraform_data" "example":
+   2:   input = var.not_real
+
+An input variable with the name "not_real" has not been declared. This
+variable can be declared with a variable "not_real" {} block.
+
+Error: Reference to undeclared input variable
+
+  on main.tf line 2, in resource "terraform_data" "example":
+   2:   input = var.not_real
+
+An input variable with the name "not_real" has not been declared. This
+variable can be declared with a variable "not_real" {} block.

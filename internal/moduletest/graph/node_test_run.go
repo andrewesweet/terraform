@@ -181,7 +181,7 @@ func (n *NodeTestRun) execute(ctx *EvalContext, waiter *operationWaiter) {
 	}
 	ctx.SetOverrides(n.run, overrides)
 
-	n.testValidate(providers, waiter)
+	n.testValidate(ctx, providers, waiter)
 	if run.Diagnostics.HasErrors() {
 		return
 	}
@@ -201,21 +201,23 @@ func (n *NodeTestRun) execute(ctx *EvalContext, waiter *operationWaiter) {
 }
 
 // Validating the module config which the run acts on
-func (n *NodeTestRun) testValidate(providers map[addrs.RootProviderConfig]providers.Interface, waiter *operationWaiter) {
+func (n *NodeTestRun) testValidate(ctx *EvalContext, providers map[addrs.RootProviderConfig]providers.Interface, waiter *operationWaiter) {
 	run := n.run
 	file := n.File()
 	config := run.ModuleConfig
 
-	log.Printf("[TRACE] TestFileRunner: called validate for %s/%s", file.Name, run.Name)
-	tfCtx, ctxDiags := terraform.NewContext(n.opts.ContextOpts)
-	if ctxDiags.HasErrors() {
-		return
-	}
-	waiter.update(tfCtx, moduletest.Running, nil)
-	validateDiags := tfCtx.Validate(config, &terraform.ValidateOpts{
-		ExternalProviders:          providers,
-		AllowRootEphemeralOutputs:  true,
-		AllowRootDeprecatedOutputs: true,
+	validateDiags := ctx.validations.validate(config, providers, func() tfdiags.Diagnostics {
+		log.Printf("[TRACE] TestFileRunner: called validate for %s/%s", file.Name, run.Name)
+		tfCtx, ctxDiags := terraform.NewContext(n.opts.ContextOpts)
+		if ctxDiags.HasErrors() {
+			return nil
+		}
+		waiter.update(tfCtx, moduletest.Running, nil)
+		return tfCtx.Validate(config, &terraform.ValidateOpts{
+			ExternalProviders:          providers,
+			AllowRootEphemeralOutputs:  true,
+			AllowRootDeprecatedOutputs: true,
+		})
 	})
 	run.Diagnostics = run.Diagnostics.Append(validateDiags)
 	if validateDiags.HasErrors() {

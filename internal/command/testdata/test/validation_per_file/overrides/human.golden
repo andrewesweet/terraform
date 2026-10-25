@@ -1,0 +1,85 @@
+main.tftest.hcl... in progress
+  run "first"... pass
+
+Warning: First validation diagnostic
+
+The resource configuration was checked.
+
+Warning: Second validation diagnostic
+
+Diagnostic order must be preserved.
+
+Warning: First validation diagnostic
+
+The resource configuration was checked.
+
+Warning: Second validation diagnostic
+
+Diagnostic order must be preserved.
+
+Warning: First validation diagnostic
+
+The resource configuration was checked.
+
+Warning: Second validation diagnostic
+
+Diagnostic order must be preserved.
+
+  run "second"... pass
+
+Warning: First validation diagnostic
+
+The resource configuration was checked.
+
+Warning: Second validation diagnostic
+
+Diagnostic order must be preserved.
+
+Warning: First validation diagnostic
+
+The resource configuration was checked.
+
+Warning: Second validation diagnostic
+
+Diagnostic order must be preserved.
+
+Warning: First validation diagnostic
+
+The resource configuration was checked.
+
+Warning: Second validation diagnostic
+
+Diagnostic order must be preserved.
+
+  run "third"... pass
+
+Warning: First validation diagnostic
+
+The resource configuration was checked.
+
+Warning: Second validation diagnostic
+
+Diagnostic order must be preserved.
+
+Warning: First validation diagnostic
+
+The resource configuration was checked.
+
+Warning: Second validation diagnostic
+
+Diagnostic order must be preserved.
+
+Warning: First validation diagnostic
+
+The resource configuration was checked.
+
+Warning: Second validation diagnostic
+
+Diagnostic order must be preserved.
+
+main.tftest.hcl... tearing down
+main.tftest.hcl... pass
+
+Success! 3 passed, 0 failed.
+
+--- stderr ---

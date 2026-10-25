@@ -1,0 +1,34 @@
+main.tftest.hcl... in progress
+  run "second"... fail
+  run "first"... fail
+  run "third"... fail
+main.tftest.hcl... tearing down
+main.tftest.hcl... fail
+
+Failure! 0 passed, 3 failed.
+
+--- stderr ---
+
+Error: First validation diagnostic
+
+The resource configuration was checked.
+
+Error: Second validation diagnostic
+
+Diagnostic order must be preserved.
+
+Error: First validation diagnostic
+
+The resource configuration was checked.
+
+Error: Second validation diagnostic
+
+Diagnostic order must be preserved.
+
+Error: First validation diagnostic
+
+The resource configuration was checked.
+
+Error: Second validation diagnostic
+
+Diagnostic order must be preserved.

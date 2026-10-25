@@ -1,0 +1,10 @@
+main.tftest.hcl... in progress
+  run "first"... pass
+  run "second"... pass
+  run "third"... pass
+main.tftest.hcl... tearing down
+main.tftest.hcl... pass
+
+Success! 3 passed, 0 failed.
+
+--- stderr ---

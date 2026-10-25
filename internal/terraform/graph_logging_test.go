@@ -18,8 +18,6 @@ import (
 	"github.com/hashicorp/terraform/internal/logging"
 )
 
-// Exercise process-initialized logging rather than replacing the standard
-// logger's writer, so that level filtering, JSON and sinks all use real wiring.
 func TestGraphLogging(t *testing.T) {
 	for _, tc := range []struct {
 		name, level, core, graphTrace string
@@ -39,7 +37,6 @@ func TestGraphLogging(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			logPath := filepath.Join(t.TempDir(), "terraform.log")
-			// Clear inherited logging settings before the child's init functions.
 			env := []string{}
 			for _, entry := range os.Environ() {
 				if !strings.HasPrefix(entry, "TF_LOG") && !strings.HasPrefix(entry, "TF_GRAPH_") {
@@ -101,8 +98,6 @@ func TestGraphLogging(t *testing.T) {
 					`ReferenceTransformer: "B" references: [A]`,
 					`ReferenceTransformer: "B" references: A`)
 			}
-			// Vertex traversal order is unspecified, but each complete message,
-			// including graph indentation and the number of messages, must match.
 			sort.Strings(got)
 			sort.Strings(want)
 			if !reflect.DeepEqual(got, want) {

@@ -12,8 +12,6 @@ import (
 	"github.com/hashicorp/terraform/internal/logging"
 )
 
-// Run with TF_LOG and TF_LOG_CORE unset. These benchmarks include the graph
-// work that remains after log-only argument construction is removed.
 func BenchmarkGraphLoggingDisabled(b *testing.B) {
 	if logging.HCLogger().IsDebug() {
 		b.Skip("requires debug logging to be disabled")

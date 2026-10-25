@@ -52,7 +52,6 @@ var (
 
 	GraphTrace = os.Getenv(envGraphTrace) != ""
 
-	// RegisterSink only adds sinks, so this stays true once a sink is registered.
 	hasLogSink atomic.Bool
 )
 

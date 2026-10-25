@@ -56,8 +56,6 @@ type EvalContext struct {
 	providerStatus map[addrs.RootProviderConfig]moduletest.Status
 	providersLock  sync.Mutex
 
-	// Validation is independent of run variables, state, and overrides. Cache it
-	// only for this file, whose provider instances remain alive during its runs.
 	validations validationCache
 
 	// FileStates is a mapping of module keys to it's last applied state

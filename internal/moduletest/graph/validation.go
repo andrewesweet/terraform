@@ -13,13 +13,6 @@ import (
 	"github.com/hashicorp/terraform/internal/tfdiags"
 )
 
-// validationCache identifies configurations by their loaded object, not their
-// source address: separate module calls can have different configurations. The
-// provider map identifies both the destination addresses and the actual provider
-// instances, so remapping an alias cannot reuse another provider's diagnostics.
-// Test providers are pointer-backed instances held by the file's EvalContext.
-// The maps returned by getProviders are fresh per run; their map allocation is
-// not part of the identity.
 type validationCache struct {
 	mu      sync.Mutex
 	configs map[*configs.Config][]*validationResult
@@ -49,8 +42,6 @@ func (c *validationCache) validate(config *configs.Config, providers map[addrs.R
 	}
 	c.mu.Unlock()
 
-	// Do not hold the file-wide lock while validating: unrelated configurations
-	// may validate concurrently. Once also publishes the diagnostics to waiters.
 	result.once.Do(func() { result.diags = validate() })
 	return result.diags
 }

@@ -24,9 +24,6 @@ import (
 	"github.com/hashicorp/terraform/internal/tfdiags"
 )
 
-// Pin the command's rendering as well as its exit status. In particular, a
-// validation diagnostic belongs to every run, even when those runs share a
-// configuration and cannot proceed to planning.
 func TestTest_ValidationPerFile(t *testing.T) {
 	for _, fixture := range []string{"repeated", "distinct", "overrides", "invalid", "invalid-reference", "provisioners"} {
 		for _, mode := range []struct {
@@ -119,8 +116,6 @@ func TestTest_ValidationPerFile(t *testing.T) {
 					actual = validationOutputMultiset(actual)
 					expected = []byte(validationOutputMultiset(string(expected)))
 				} else if fixture == "repeated" || strings.HasPrefix(fixture, "invalid") {
-					// Independent parallel runs have no defined completion order.
-					// Keep each run's diagnostics ordered, but compare the runs by name.
 					actual = validationRunOrder(actual, format)
 					expected = []byte(validationRunOrder(string(expected), format))
 				}
@@ -135,8 +130,6 @@ func TestTest_ValidationPerFile(t *testing.T) {
 				if strings.HasPrefix(fixture, "invalid") {
 					checkValidationRunErrors(t, fixture)
 				}
-				// Four plans plus validation of three distinct (configuration,
-				// provider map) pairs. The second and fourth runs share a pair.
 				if fixture == "distinct" && validations.Load() != 7 {
 					t.Errorf("validation calls = %d, want 7", validations.Load())
 				}
@@ -154,8 +147,6 @@ func TestTest_ValidationPerFile(t *testing.T) {
 	}
 }
 
-// Only the independent-run region is unordered; retain file events and the
-// order of diagnostics within each run exactly as emitted by the command.
 func validationRunOrder(output, format string) string {
 	lines := strings.Split(output, "\n")
 	start, end := -1, -1
@@ -222,8 +213,6 @@ func validationOutputMultiset(output string) string {
 
 func checkValidationRunErrors(t *testing.T, fixture string) {
 	t.Helper()
-	// Human diagnostics have no run label and can interleave. The command's
-	// JUnit report exposes the attribution that is not present in that view.
 	source, err := os.ReadFile("report.xml")
 	if err != nil {
 		t.Fatal(err)

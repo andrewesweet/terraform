@@ -22,19 +22,7 @@ import (
 	"github.com/hashicorp/terraform/internal/lang/funcs"
 )
 
-// TestScopeFunctions checks that a scope's function table is the same, in its
-// set of names and in how those functions behave, for every combination of
-// Scope settings that Functions takes into account.
-//
-// Functions derives most of its table from a table shared by all scopes with
-// the same base directory, so this test is what shows that the sharing does not
-// leak any part of one scope's configuration into another: for each
-// combination it compares the scope's table against the same table derived from
-// scratch by referenceFunctions.
 func TestScopeFunctions(t *testing.T) {
-	// Two directories with files of the same names but different content, so
-	// that a table bound to the wrong base directory gives a different result
-	// rather than an error.
 	dirA := writeFunctionTestFiles(t, "alpha")
 	dirB := writeFunctionTestFiles(t, "beta")
 
@@ -57,8 +45,6 @@ func TestScopeFunctions(t *testing.T) {
 		{"working directory", "."},
 	}
 
-	// The six settings below are the ones beyond the base directory that
-	// Functions reads from the scope.
 	const (
 		forProvider = 1 << iota
 		consoleMode
@@ -108,25 +94,17 @@ func TestScopeFunctions(t *testing.T) {
 	}
 }
 
-// TestScopeFunctions_distinctTablesPerScope checks that each scope still gets
-// its own function table. Callers are allowed to modify the returned map, so
-// sharing one table between scopes would let one caller affect another.
 func TestScopeFunctions_distinctTablesPerScope(t *testing.T) {
 	dir := writeFunctionTestFiles(t, "shared")
 
 	first := &Scope{BaseDir: dir, ConsoleMode: true}
 	firstFuncs := first.Functions()
 
-	// Modify the first scope's table in the two ways a caller can: remove an
-	// entry, and replace an entry that came from the shared base table.
 	delete(firstFuncs, "file")
 	delete(firstFuncs, "core::file")
 	firstFuncs["upper"] = stdlib.LowerFunc
 	firstFuncs["core::upper"] = stdlib.LowerFunc
 
-	// Other scopes, with the same and with a different configuration, must not
-	// see either change. If the base table were handed out directly, or if
-	// one scope's copy were shared with another, these would observe it.
 	for _, scope := range []*Scope{
 		{BaseDir: dir, ConsoleMode: true},
 		{BaseDir: dir},
@@ -141,8 +119,6 @@ func TestScopeFunctions_distinctTablesPerScope(t *testing.T) {
 		}
 
 		if scope.BaseDir != dir {
-			// The "." scope doesn't have this test's files, so there is
-			// nothing to compare beyond the function itself being present.
 			continue
 		}
 
@@ -156,8 +132,6 @@ func TestScopeFunctions_distinctTablesPerScope(t *testing.T) {
 	}
 }
 
-// TestScopeFunctions_baseDir checks that the parts of the table that depend on
-// a scope's base directory are not shared with scopes using a different one.
 func TestScopeFunctions_baseDir(t *testing.T) {
 	dirA := writeFunctionTestFiles(t, "alpha")
 	dirB := writeFunctionTestFiles(t, "beta")
@@ -165,8 +139,6 @@ func TestScopeFunctions_baseDir(t *testing.T) {
 	scopeA := &Scope{BaseDir: dirA}
 	scopeB := &Scope{BaseDir: dirB}
 
-	// Build the tables in an order that would let a table built for one base
-	// directory be reused for the other if the cache were keyed incorrectly.
 	for _, test := range []struct {
 		scope *Scope
 		want  string
@@ -187,17 +159,12 @@ func TestScopeFunctions_baseDir(t *testing.T) {
 	}
 }
 
-// TestScopeFunctions_filesystemResultsPerScope checks that each scope's
-// filesystem functions check their results against that scope's own prior
-// results, rather than sharing the no-op wrappers used when there is nothing
-// to check against.
 func TestScopeFunctions_filesystemResultsPerScope(t *testing.T) {
 	dir := writeFunctionTestFiles(t, "first")
 	path := filepath.Join(dir, "content.txt")
 
 	results := NewFunctionResultsTable(nil)
 
-	// The first call through the checking wrapper records the result.
 	for _, name := range []string{"file", "core::file"} {
 		scope := &Scope{BaseDir: dir, FunctionResults: results}
 		got, diags := evalFunctionExpression(scope, name+`("content.txt")`)
@@ -209,8 +176,6 @@ func TestScopeFunctions_filesystemResultsPerScope(t *testing.T) {
 		}
 	}
 
-	// Changing the file changes what the function would return, which the
-	// wrapper must reject.
 	if err := os.WriteFile(path, []byte("second"), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -221,8 +186,6 @@ func TestScopeFunctions_filesystemResultsPerScope(t *testing.T) {
 		}
 	}
 
-	// A provider configuration tolerates inconsistent results, and so does a
-	// scope with no prior results to check against.
 	for _, name := range []string{"file", "core::file"} {
 		if _, diags := evalFunctionExpression(&Scope{BaseDir: dir, FunctionResults: results, ForProvider: true}, name+`("content.txt")`); diags.HasErrors() {
 			t.Errorf("unexpected error from %s for a provider configuration: %s", name, diags.Error())
@@ -233,9 +196,6 @@ func TestScopeFunctions_filesystemResultsPerScope(t *testing.T) {
 	}
 }
 
-// TestScopeFunctions_templateFunctionsSeeScopeFunctions checks that the
-// template-rendering functions call the functions of the scope they are
-// rendering for, including any functions contributed by providers.
 func TestScopeFunctions_templateFunctionsSeeScopeFunctions(t *testing.T) {
 	dir := writeFunctionTestFiles(t, "alpha")
 
@@ -261,9 +221,6 @@ func TestScopeFunctions_templateFunctionsSeeScopeFunctions(t *testing.T) {
 	}
 }
 
-// TestScopeFunctions_concurrentScopes checks that building the function tables
-// concurrent graph walks need is safe, and that concurrent scopes with
-// different configurations do not see each other's functions.
 func TestScopeFunctions_concurrentScopes(t *testing.T) {
 	const testBaseDir = "./testdata/functions-test"
 
@@ -302,9 +259,6 @@ func TestScopeFunctions_concurrentScopes(t *testing.T) {
 	wg.Wait()
 }
 
-// BenchmarkScopeFunctions measures building the function table for a new
-// scope, which is what happens for the first expression evaluated in each
-// scope the evaluator creates.
 func BenchmarkScopeFunctions(b *testing.B) {
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
@@ -315,14 +269,6 @@ func BenchmarkScopeFunctions(b *testing.B) {
 	}
 }
 
-// referenceFunctions derives the function table for the given scope by
-// building every part of it from scratch, which is what Scope.Functions did
-// before the parts that do not depend on the rest of the scope's configuration
-// were cached in a table shared by all scopes with the same base directory.
-//
-// It is the reference that the cached implementation must reproduce, so that
-// the cache can be shown not to change any scope's set of functions or their
-// behaviour.
 func referenceFunctions(s *Scope) map[string]function.Function {
 	immutableResults := immutableResults
 	if s.ForProvider {
@@ -331,10 +277,6 @@ func referenceFunctions(s *Scope) map[string]function.Function {
 
 	coreFuncs := baseFunctions(s.BaseDir)
 
-	// Modify the functions which behave slightly differently in core.
-	// Filesystem functions will check for consistent results, and the
-	// template functions need to be updated to close over the correct
-	// versions of the filesystem functions.
 	coreFuncs["file"] = funcs.MakeFileFunc(s.BaseDir, false, immutableResults("file", s.FunctionResults))
 	coreFuncs["fileexists"] = funcs.MakeFileExistsFunc(s.BaseDir, immutableResults("fileexists", s.FunctionResults))
 	coreFuncs["fileset"] = funcs.MakeFileSetFunc(s.BaseDir, immutableResults("fileset", s.FunctionResults))
@@ -348,10 +290,6 @@ func referenceFunctions(s *Scope) map[string]function.Function {
 
 	ret := make(map[string]function.Function)
 
-	// Our two template-rendering functions want to be able to call
-	// all of the other functions themselves, but we pass them indirectly
-	// via a callback to avoid chicken/egg problems while initializing
-	// the functions table.
 	funcsFunc := func() (map[string]function.Function, collections.Set[string], collections.Set[string]) {
 		return ret, filesystemFunctions, templateFunctions
 	}
@@ -387,8 +325,6 @@ func referenceFunctions(s *Scope) map[string]function.Function {
 	return ret
 }
 
-// checkFunctionTablesEqual checks that two function tables contain the same
-// names, described the same way, accepting and returning the same types.
 func checkFunctionTablesEqual(t *testing.T, got, want map[string]function.Function) {
 	t.Helper()
 
@@ -423,9 +359,6 @@ func checkFunctionTablesEqual(t *testing.T, got, want map[string]function.Functi
 	}
 }
 
-// returnType describes the type the given function returns when its arguments
-// have the types it declares, along with any error. The result is a string so
-// that a function whose return type is invalid compares equal to itself.
 func returnType(fn function.Function) string {
 	argTypes := make([]cty.Type, 0, len(fn.Params())+1)
 	for _, param := range fn.Params() {
@@ -437,22 +370,14 @@ func returnType(fn function.Function) string {
 
 	retType, err := fn.ReturnType(argTypes)
 	if err != nil {
-		// A function whose own Type implementation panics gets an error that
-		// includes a stack trace, which will never match between two calls; the
-		// first line is the part that describes the failure.
 		msg, _, _ := strings.Cut(err.Error(), "\n")
 		return "error: " + msg
 	}
 	return retType.GoString()
 }
 
-// functionProbes are expressions that exercise the parts of a function table
-// that vary between scopes.
 var functionProbes = []struct {
-	src string
-	// knownOnly is for the impure functions, whose result cannot be compared
-	// between two calls; for those we only compare the type of the result and
-	// whether it is known, which is what changes when a scope wraps them.
+	src       string
 	knownOnly bool
 }{
 	{src: `file("content.txt")`},
@@ -480,8 +405,6 @@ var functionProbes = []struct {
 	{src: `length([1, 2])`},
 }
 
-// checkFunctionProbesEqual checks that the functions in two tables behave the
-// same way when called.
 func checkFunctionProbesEqual(t *testing.T, got, want map[string]function.Function) {
 	t.Helper()
 
@@ -509,8 +432,6 @@ func checkFunctionProbesEqual(t *testing.T, got, want map[string]function.Functi
 				}
 				return
 			}
-			// Some results are capsule values that do not compare as equal to
-			// values of an identical shape, so compare their representations.
 			if got, want := gotVal.GoString(), wantVal.GoString(); got != want {
 				t.Fatalf("wrong result\ngot:  %s\nwant: %s", got, want)
 			}
@@ -518,26 +439,19 @@ func checkFunctionProbesEqual(t *testing.T, got, want map[string]function.Functi
 	}
 }
 
-// evalFunctionExpression evaluates the given expression in the given scope.
 func evalFunctionExpression(scope *Scope, src string) (cty.Value, hcl.Diagnostics) {
 	return evalFunctionExpressionTable(scope.Functions(), src)
 }
 
-// evalFunctionExpressionTable evaluates the given expression using only the
-// functions in the given table as its evaluation context.
 func evalFunctionExpressionTable(table map[string]function.Function, src string) (cty.Value, hcl.Diagnostics) {
 	expr, diags := hclsyntax.ParseExpression([]byte(src), "probe.hcl", hcl.Pos{Line: 1, Column: 1})
 	if diags.HasErrors() {
-		// The probes are constants in this file, so a parse error is a bug in
-		// the test rather than a difference between two tables.
 		return cty.NilVal, diags
 	}
 
 	return expr.Value(&hcl.EvalContext{Functions: table})
 }
 
-// writeFunctionTestFiles writes the files that the probes read into a new
-// temporary directory, and returns the directory.
 func writeFunctionTestFiles(t *testing.T, content string) string {
 	t.Helper()
 

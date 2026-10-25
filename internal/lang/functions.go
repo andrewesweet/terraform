@@ -50,11 +50,6 @@ var templateFunctions = collections.NewSetCmp[string](
 	"templatestring",
 )
 
-// cachedCoreFunctionsByBaseDir caches the parts of the function table that
-// depend only on a Scope's base directory. Terraform creates a Scope for each
-// block it evaluates, so without this cache the same table is derived over and
-// over from the same inputs. Every scope core creates uses a base directory of
-// ".", so this cache holds essentially one entry per process.
 var (
 	cachedCoreFunctionsMu        sync.Mutex
 	cachedCoreFunctionsByBaseDir = make(map[string]map[string]function.Function)
@@ -76,12 +71,6 @@ func (s *Scope) Functions() map[string]function.Function {
 
 	s.funcsLock.Lock()
 	if s.funcs == nil {
-		// Most of the table depends only on the base directory, so we copy
-		// the table shared by all scopes using that base directory and then
-		// replace the functions that depend on the rest of this scope's
-		// configuration. Each scope keeps its own table because callers are
-		// allowed to modify it, and because the template-rendering functions
-		// indirectly refer to it.
 		coreFuncs := cachedCoreFunctions(s.BaseDir)
 		s.funcs = make(map[string]function.Function, len(coreFuncs))
 		for name, fn := range coreFuncs {
@@ -151,22 +140,12 @@ func (s *Scope) Functions() map[string]function.Function {
 	return s.funcs
 }
 
-// setCoreFunction records the given function in the receiving scope's table
-// under both its bare name and its "core::" namespaced name, wrapping it in
-// the description associated with the given name.
 func (s *Scope) setCoreFunction(name string, fn function.Function) {
 	fn = funcs.WithDescription(name, fn)
 	s.funcs[name] = fn
 	s.funcs["core::"+name] = fn
 }
 
-// cachedCoreFunctions returns the built-in functions that depend only on the
-// given base directory, including both their bare names and their "core::"
-// namespaced names, each wrapped in its description.
-//
-// The result is shared by every caller with the same base directory, so it
-// must not be modified. Callers that need to change entries must copy it
-// first, as Scope.Functions does.
 func cachedCoreFunctions(baseDir string) map[string]function.Function {
 	cachedCoreFunctionsMu.Lock()
 	defer cachedCoreFunctionsMu.Unlock()
@@ -175,10 +154,6 @@ func cachedCoreFunctions(baseDir string) map[string]function.Function {
 		return table
 	}
 
-	// baseFunctions returns the functions that don't depend on any other part
-	// of a scope's configuration. The ones it builds for the base directory
-	// itself are replaced by the caller, so their wrappers and callbacks here
-	// are only placeholders.
 	baseFuncs := baseFunctions(baseDir)
 
 	// All of the built-in functions are also available under the "core::"

@@ -8,12 +8,14 @@ import (
 	"log"
 	"sort"
 
+	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/hcl/v2"
 
 	"github.com/hashicorp/terraform/internal/addrs"
 	"github.com/hashicorp/terraform/internal/configs/configschema"
 	"github.com/hashicorp/terraform/internal/dag"
 	"github.com/hashicorp/terraform/internal/lang/langrefs"
+	"github.com/hashicorp/terraform/internal/logging"
 )
 
 // GraphNodeReferenceable must be implemented by any node that represents
@@ -121,6 +123,7 @@ type GraphNodeReferenceOutside interface {
 type ReferenceTransformer struct{}
 
 func (t *ReferenceTransformer) Transform(g *Graph) error {
+	debug := logging.IsLogLevelEnabled(hclog.Debug)
 	// Build a reference map so we can efficiently look up the references
 	m := NewReferenceMap(g)
 
@@ -135,17 +138,21 @@ func (t *ReferenceTransformer) Transform(g *Graph) error {
 		}
 
 		referencedNodes := m.References(v)
-		refDbg := make([]string, len(referencedNodes))
-		for i, v := range referencedNodes {
-			refDbg[i] = v.Name()
+		if debug {
+			refDbg := make([]string, len(referencedNodes))
+			for i, v := range referencedNodes {
+				refDbg[i] = v.Name()
+			}
+			log.Printf(
+				"[DEBUG] ReferenceTransformer: %q references: %v",
+				v.Name(), refDbg)
 		}
-		log.Printf(
-			"[DEBUG] ReferenceTransformer: %q references: %v",
-			v.Name(), refDbg)
 
 		for _, referenced := range referencedNodes {
 			if !graphNodesAreResourceInstancesInDifferentInstancesOfSameModule(v, referenced) {
-				log.Printf("[DEBUG] ReferenceTransformer: %q references: %v", v.Name(), referenced.Name())
+				if debug {
+					log.Printf("[DEBUG] ReferenceTransformer: %q references: %v", v.Name(), referenced.Name())
+				}
 				g.Connect(v, referenced)
 			}
 		}
@@ -183,7 +190,9 @@ func (t *ReferenceTransformer) Transform(g *Graph) error {
 			}
 
 			g.Connect(actionConfig, ref)
-			log.Printf("[DEBUG] ReferenceTransformer: %q references: %v", actionConfig.Name(), ref.Name())
+			if debug {
+				log.Printf("[DEBUG] ReferenceTransformer: %q references: %v", actionConfig.Name(), ref.Name())
+			}
 		}
 	}
 

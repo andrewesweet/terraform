@@ -9,6 +9,7 @@ import (
 	"log"
 	"os"
 	"strings"
+	"sync/atomic"
 	"syscall"
 
 	"github.com/hashicorp/go-hclog"
@@ -50,6 +51,9 @@ var (
 	}
 
 	GraphTrace = os.Getenv(envGraphTrace) != ""
+
+	// RegisterSink only adds sinks, so this stays true once a sink is registered.
+	hasLogSink atomic.Bool
 )
 
 func init() {
@@ -77,6 +81,14 @@ func RegisterSink(f *os.File) {
 		Level:  hclog.Trace,
 		Output: f,
 	}))
+	hasLogSink.Store(true)
+}
+
+// IsLogLevelEnabled reports whether the standard logger's messages at level
+// can reach an output. Registered sinks capture all levels independently of
+// the root logger's level.
+func IsLogLevelEnabled(level hclog.Level) bool {
+	return logger.GetLevel() <= level || hasLogSink.Load()
 }
 
 // LogOutput return the default global log io.Writer

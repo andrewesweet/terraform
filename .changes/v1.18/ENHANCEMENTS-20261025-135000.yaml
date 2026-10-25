@@ -1,0 +1,6 @@
+kind: ENHANCEMENTS
+# Replace Issue with the upstream pull request number before publication.
+body: 'core: Reduce graph construction overhead when trace and debug logging are disabled'
+time: 2026-10-25T13:50:00Z
+custom:
+    Issue: 0

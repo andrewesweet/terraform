@@ -6,6 +6,7 @@ package terraform
 import (
 	"log"
 
+	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/terraform/internal/addrs"
 	"github.com/hashicorp/terraform/internal/logging"
 	"github.com/hashicorp/terraform/internal/tfdiags"
@@ -37,6 +38,7 @@ func (b *BasicGraphBuilder) Build(path addrs.ModuleInstance) (*Graph, tfdiags.Di
 	var diags tfdiags.Diagnostics
 	g := &Graph{Path: path}
 
+	trace := logging.IsLogLevelEnabled(hclog.Trace)
 	var lastStepStr string
 	for _, step := range b.Steps {
 		if step == nil {
@@ -46,7 +48,7 @@ func (b *BasicGraphBuilder) Build(path addrs.ModuleInstance) (*Graph, tfdiags.Di
 
 		err := step.Transform(g)
 
-		if logging.GraphTrace {
+		if logging.GraphTrace && trace {
 			if thisStepStr := g.StringWithNodeTypes(); thisStepStr != lastStepStr {
 				log.Printf("[TRACE] Completed graph transform %T with new graph:\n%s  ------", step, logging.Indent(thisStepStr))
 				lastStepStr = thisStepStr
@@ -68,7 +70,7 @@ func (b *BasicGraphBuilder) Build(path addrs.ModuleInstance) (*Graph, tfdiags.Di
 		}
 	}
 
-	if !logging.GraphTrace {
+	if !logging.GraphTrace && trace {
 		// print the graph at least once for normal trace logs
 		log.Printf("[TRACE] Completed graph transform:\n%s  ------", g.StringWithNodeTypes())
 	}

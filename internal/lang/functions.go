@@ -146,6 +146,8 @@ func (s *Scope) setCoreFunction(name string, fn function.Function) {
 	s.funcs["core::"+name] = fn
 }
 
+// cachedCoreFunctions returns a table shared by all callers with the same
+// base directory, so it must not be modified; copy it before changing it.
 func cachedCoreFunctions(baseDir string) map[string]function.Function {
 	cachedCoreFunctionsMu.Lock()
 	defer cachedCoreFunctionsMu.Unlock()

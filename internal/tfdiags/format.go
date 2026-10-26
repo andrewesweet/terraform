@@ -147,6 +147,8 @@ func TraversalStr(traversal hcl.Traversal) string {
 func FormatValueStr(val cty.Value) (string, error) {
 	var buf bytes.Buffer
 
+	// Deprecation marks don't impact formatting, but removing them here is
+	// required: the transform and marshal below crash on marked values.
 	val, _ = marks.GetDeprecationMarksDeep(val)
 
 	val, err := cty.Transform(val, func(path cty.Path, val cty.Value) (cty.Value, error) {

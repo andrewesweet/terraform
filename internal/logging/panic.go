@@ -84,6 +84,8 @@ func PanicHandler() {
 	// without the hard-coded reference to os.Stderr.
 	stderr.Write(debug.Stack())
 
+	// os.Exit below skips deferred calls, including the deferred
+	// plugin.CleanupClients in main, so kill the plugin processes here.
 	plugin.CleanupClients()
 
 	// An exit code of 11 keeps us out of the way of the detailed exitcodes
